@@ -1,0 +1,97 @@
+---
+title: OpenAI Assistants
+description: Augment OpenAI Assistants with LedgerMem cross-thread memory.
+---
+
+OpenAI Assistants store thread state, but each thread is independent — an
+assistant has no memory of what happened in another thread, even with the
+same user. The `openai-assistants-ledgermem` package wires LedgerMem in as
+the cross-thread memory layer.
+
+## Install
+
+```bash
+pip install openai-assistants-ledgermem
+# or
+npm install @ledgermem/openai-assistants
+```
+
+## Pattern: function tool
+
+Register `recall` and `remember` as Assistant function tools, and proxy
+them to LedgerMem:
+
+```python
+from openai import OpenAI
+from openai_assistants_ledgermem import register_tools
+
+client = OpenAI()
+
+assistant = client.beta.assistants.create(
+    name="Personal assistant",
+    model="gpt-4o-mini",
+    instructions=(
+        "Use `recall` to look up what you know about the user before answering. "
+        "Use `remember` to save durable facts the user shares."
+    ),
+    tools=register_tools(),  # adds recall + remember function schemas
+)
+```
+
+When the assistant calls `recall(query="...")` or
+`remember(content="...")`, your run loop dispatches to LedgerMem:
+
+```python
+from openai_assistants_ledgermem import dispatch_tool_call
+
+run = client.beta.threads.runs.create(thread_id=thread.id, assistant_id=assistant.id)
+
+while run.status == "requires_action":
+    outputs = []
+    for call in run.required_action.submit_tool_outputs.tool_calls:
+        result = dispatch_tool_call(call, user_id="u_123")
+        outputs.append({"tool_call_id": call.id, "output": result})
+    run = client.beta.threads.runs.submit_tool_outputs(
+        thread_id=thread.id, run_id=run.id, tool_outputs=outputs
+    )
+```
+
+## Pattern: pre-run injection
+
+For assistants where you want recall to happen automatically (no LLM
+choice involved):
+
+```python
+from openai_assistants_ledgermem import inject_memories
+
+# Search LedgerMem for memories relevant to the latest user message,
+# then add them to the thread as a system-style message before the run.
+inject_memories(thread_id=thread.id, user_id="u_123", limit=5)
+
+run = client.beta.threads.runs.create(thread_id=thread.id, assistant_id=assistant.id)
+```
+
+## TypeScript
+
+```ts
+import OpenAI from "openai";
+import { registerTools, dispatchToolCall, injectMemories } from "@ledgermem/openai-assistants";
+
+const openai = new OpenAI();
+
+const assistant = await openai.beta.assistants.create({
+  name: "Personal assistant",
+  model: "gpt-4o-mini",
+  tools: registerTools(),
+});
+
+await injectMemories({ threadId: thread.id, userId: "u_123", limit: 5 });
+```
+
+## Why bother?
+
+Assistants threads are great for in-conversation state, but they cap at
+~100k tokens of context and are not designed for cross-thread recall. With
+LedgerMem in front, your assistant can remember what the user told it
+yesterday, last month, or in a totally separate session — without
+ballooning the per-thread context.

@@ -1,0 +1,78 @@
+---
+title: Slack connector
+description: Ingest Slack messages into LedgerMem so your agent can recall team conversations.
+---
+
+The Slack connector continuously syncs messages from a Slack workspace into a
+LedgerMem workspace. It is the fastest way to make a chatbot, support agent,
+or research assistant aware of conversations that already happened.
+
+## Install
+
+The connector runs in the LedgerMem cloud. Add it from the dashboard:
+
+1. **Connectors -> Add new -> Slack**
+2. Click **Install in Slack** and choose the workspace.
+3. Pick the channels you want to ingest (defaults to public channels only).
+4. Choose a target LedgerMem workspace.
+
+That is it — backfill starts within a minute and live sync runs in real time
+via Slack's Events API.
+
+## What gets ingested
+
+For each message:
+
+- `content`: the message text, with mentions resolved to display names.
+- `kind`: `episodic` (we never auto-promote Slack messages to semantic).
+- `metadata.source`: `slack`.
+- `metadata.channel_id`, `metadata.channel_name`, `metadata.thread_ts`.
+- `metadata.author_id`, `metadata.author_name`.
+- `metadata.posted_at`: ISO timestamp.
+- `metadata.permalink`: clickable link back to the original message.
+
+Threaded replies are stored individually and tagged with their parent
+message's `thread_ts`, so you can retrieve a whole thread by filtering on
+that key.
+
+## What does not get ingested
+
+- DMs (we do not request the `im:history` scope).
+- Private channels unless you explicitly add the bot.
+- Files (we leave file ingestion to the Google Drive connector).
+- Edits to messages older than 7 days (Slack does not push these reliably).
+
+## Search patterns
+
+```python
+results = lm.search(
+    query="what did we decide about the rollout?",
+    filter={"source": "slack", "channel_name": "eng-rollouts"},
+    limit=5,
+)
+```
+
+```python
+# Get the full thread containing a memory:
+def get_thread(parent_ts: str):
+    return list(lm.memories.list(filter={
+        "source": "slack",
+        "thread_ts": parent_ts,
+    }))
+```
+
+## Permissions
+
+The Slack bot only ever reads channels you have explicitly chosen. The
+LedgerMem workspace inherits Slack's access model: messages from a private
+channel are stored with `metadata.private=True` and the search endpoint
+will reject them unless the caller's API key carries the
+`include_private:true` flag.
+
+## Backfill
+
+The first sync pulls up to 90 days of history by default. To pull more,
+set the `slack.backfill_days` workspace setting before adding the
+connector. Beyond ~1 year, Slack rate limits become the bottleneck and the
+backfill can take hours; you will see progress in
+**Connectors -> Slack -> Sync history**.

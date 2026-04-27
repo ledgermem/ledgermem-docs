@@ -1,0 +1,107 @@
+---
+title: Ruby SDK
+description: Ruby 3.2+ client for LedgerMem.
+---
+
+The Ruby SDK is a thin wrapper around `Net::HTTP` with full Sorbet type
+signatures and a sensible Active Record-style API.
+
+- RubyGems: `ledgermem`
+- GitHub: [`ledgermem/ledgermem-ruby`](https://github.com/ledgermem/ledgermem-ruby)
+- Ruby: 3.2+
+
+## Install
+
+```bash
+gem install ledgermem
+# or in your Gemfile:
+gem "ledgermem", "~> 0.1"
+```
+
+## Configure
+
+```ruby
+require "ledgermem"
+
+LedgerMem.configure do |config|
+  config.api_key = ENV.fetch("LEDGERMEM_API_KEY")
+  config.workspace_id = ENV.fetch("LEDGERMEM_WORKSPACE_ID")
+  config.timeout = 30
+end
+
+client = LedgerMem::Client.new
+```
+
+## Memories
+
+```ruby
+memory = client.memories.create(
+  content: "User prefers dark mode.",
+  metadata: { user_id: "u_123" },
+  kind: :semantic,
+)
+
+fetched = client.memories.find(memory.id)
+client.memories.destroy(memory.id)
+```
+
+## Search
+
+```ruby
+results = client.search(
+  query: "what does the user like?",
+  limit: 5,
+  strategy: :rerank,
+  filter: { user_id: "u_123" },
+)
+
+results.each do |hit|
+  puts "#{hit.score.round(3)}  #{hit.content}"
+end
+```
+
+## Streaming
+
+```ruby
+client.search.stream("what did we decide?", limit: 200) do |hit|
+  puts "#{hit.id}  #{hit.score}"
+end
+```
+
+## Rails integration
+
+```ruby
+# config/initializers/ledgermem.rb
+LedgerMem.configure do |config|
+  config.api_key = Rails.application.credentials.ledgermem[:api_key]
+  config.workspace_id = Rails.application.credentials.ledgermem[:workspace_id]
+end
+```
+
+```ruby
+class User < ApplicationRecord
+  def remember(text, kind: :semantic)
+    LedgerMem.client.memories.create(
+      content: text,
+      metadata: { user_id: id },
+      kind: kind,
+    )
+  end
+
+  def recall(query, limit: 5)
+    LedgerMem.client.search(query: query, limit: limit, filter: { user_id: id })
+  end
+end
+```
+
+## Errors
+
+```ruby
+begin
+  client.memories.find("mem_does_not_exist")
+rescue LedgerMem::NotFoundError => e
+  puts "not found: #{e.request_id}"
+rescue LedgerMem::APIError => e
+  puts "api error: #{e.status} #{e.message}"
+end
+```

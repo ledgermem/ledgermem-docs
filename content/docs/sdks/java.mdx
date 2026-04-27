@@ -1,0 +1,113 @@
+---
+title: Java SDK
+description: Java 17+ client for LedgerMem.
+---
+
+The Java SDK targets Java 17+ and works on JVM, Kotlin, and Android (API 26+).
+
+- Maven Central: `dev.proofly:ledgermem`
+- GitHub: [`ledgermem/ledgermem-java`](https://github.com/ledgermem/ledgermem-java)
+
+## Install
+
+### Maven
+
+```xml
+<dependency>
+  <groupId>dev.proofly</groupId>
+  <artifactId>ledgermem</artifactId>
+  <version>0.1.0</version>
+</dependency>
+```
+
+### Gradle
+
+```kotlin
+dependencies {
+    implementation("dev.proofly:ledgermem:0.1.0")
+}
+```
+
+## Configure
+
+```java
+import dev.proofly.ledgermem.LedgerMem;
+import dev.proofly.ledgermem.LedgerMemConfig;
+
+LedgerMem client = LedgerMem.builder()
+    .apiKey(System.getenv("LEDGERMEM_API_KEY"))
+    .workspaceId(System.getenv("LEDGERMEM_WORKSPACE_ID"))
+    .build();
+```
+
+## Memories
+
+```java
+import dev.proofly.ledgermem.model.*;
+
+Memory memory = client.memories().create(
+    CreateMemoryRequest.builder()
+        .content("User prefers dark mode.")
+        .metadata(Map.of("user_id", "u_123"))
+        .kind(Kind.SEMANTIC)
+        .build()
+);
+
+Memory fetched = client.memories().get(memory.id());
+client.memories().delete(memory.id());
+```
+
+## Search
+
+```java
+SearchResponse response = client.search(
+    SearchRequest.builder()
+        .query("what does the user like?")
+        .limit(5)
+        .strategy(SearchStrategy.RERANK)
+        .filter(Map.of("user_id", "u_123"))
+        .build()
+);
+
+for (SearchHit hit : response.results()) {
+    System.out.printf("%.3f  %s%n", hit.score(), hit.content());
+}
+```
+
+## Async
+
+The SDK exposes a parallel async API returning `CompletableFuture`:
+
+```java
+client.search().async(request).thenAccept(response -> {
+    response.results().forEach(hit ->
+        System.out.println(hit.content())
+    );
+});
+```
+
+## Errors
+
+```java
+import dev.proofly.ledgermem.LedgerMemException;
+
+try {
+    client.memories().get("mem_does_not_exist");
+} catch (LedgerMemException ex) {
+    if (ex.statusCode() == 404) {
+        System.out.println("not found: " + ex.requestId());
+    }
+}
+```
+
+## Kotlin coroutines
+
+For Kotlin users, an extension module wraps the async API in `suspend`
+functions:
+
+```kotlin
+import dev.proofly.ledgermem.kotlin.searchAsync
+
+val results = client.searchAsync(request)
+results.results.forEach { println(it.content) }
+```

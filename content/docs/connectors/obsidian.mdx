@@ -1,0 +1,88 @@
+---
+title: Obsidian connector
+description: Sync your Obsidian vault into LedgerMem.
+---
+
+The Obsidian connector is a community-plugin you install inside Obsidian.
+Once configured, it watches your vault and pushes every note into a
+LedgerMem workspace, keeping it in sync as you edit.
+
+## Install
+
+1. In Obsidian, open **Settings -> Community plugins -> Browse**.
+2. Search for **LedgerMem** and click **Install**, then **Enable**.
+3. Open **LedgerMem** in the sidebar settings:
+   - Paste your API key.
+   - Enter your workspace ID.
+   - Pick which folders to sync (default: all).
+
+The first sync runs in the background and shows progress in the bottom
+status bar.
+
+## What gets ingested
+
+For each note (`.md` file):
+
+- `content`: the note body, frontmatter stripped.
+- `metadata.title`: the note's H1 or filename.
+- `metadata.path`: the note's vault path.
+- `metadata.tags`: tags parsed from frontmatter and inline `#tags`.
+- `metadata.frontmatter`: the YAML frontmatter as a JSON object.
+- `metadata.backlinks`: list of notes that link to this one.
+- `metadata.outbound_links`: list of notes this one links to.
+- `metadata.last_modified`: file mtime.
+
+Backlinks and outbound links update transactionally with the source note
+so you can search "all notes linking to X" with one filter.
+
+## Search patterns
+
+```ts
+// All notes tagged #project/helios:
+const results = await lm.search({
+  query: "what's left for the helios launch?",
+  filter: { source: "obsidian", "tags": "project/helios" },
+  limit: 10,
+});
+```
+
+```ts
+// Daily notes from this week:
+const results = await lm.search({
+  query: "what did i work on?",
+  filter: {
+    source: "obsidian",
+    "frontmatter.type": "daily",
+    "last_modified": { $gte: thisWeekStart.toISOString() },
+  },
+  limit: 7,
+});
+```
+
+## Conflict handling
+
+The connector treats your local vault as the source of truth — there is no
+two-way sync. If you delete a note locally, the corresponding LedgerMem
+memory is hard-deleted on the next sync (within ~5 seconds).
+
+If you want soft-delete with audit, set
+`obsidian.delete_strategy=archive` in the plugin settings.
+
+## Privacy
+
+The plugin never sends notes to any third party other than LedgerMem. All
+HTTP traffic goes directly from your Obsidian instance to
+`api.proofly.dev`. If you self-host LedgerMem, set the **Base URL** to
+your endpoint and traffic stays inside your perimeter.
+
+## Power users
+
+For very large vaults (50k+ notes), the initial sync can take 30+ minutes.
+You can pre-compute embeddings locally with the bundled CLI:
+
+```bash
+ledgermem-obsidian export --vault ~/Vault --out ~/vault-export.jsonl
+ledgermem-obsidian import --workspace ws_... --file ~/vault-export.jsonl
+```
+
+This skips the per-note HTTP round-trips and uses the bulk-ingest endpoint.

@@ -1,0 +1,77 @@
+---
+title: Workspace
+description: Tenant boundary, billing unit, and scope for every API call.
+---
+
+A **workspace** is the top-level tenant boundary in LedgerMem. Every memory
+belongs to exactly one workspace, every API key is scoped to exactly one
+workspace, and every search reads only its own workspace's memories.
+
+## Why workspaces matter
+
+Workspaces are the unit we use for:
+
+- **Isolation.** No memory from workspace A can ever appear in a search from
+  workspace B. The check is enforced in the database layer, not the
+  application — even a logic bug cannot leak across workspaces.
+- **Billing.** Storage, embedding tokens, and search calls are metered per
+  workspace.
+- **Configuration.** Embedding model, default chunk size, retention policy,
+  and dedupe key set all live on the workspace, not the API key.
+- **Region.** Each workspace pins to a single region (`us-east-1`, `eu-west-1`,
+  `ap-southeast-1`). Data never replicates across regions unless you opt in.
+
+## Creating workspaces
+
+```bash
+curl -X POST https://api.proofly.dev/v1/workspaces \
+  -H "Authorization: Bearer $LEDGERMEM_ROOT_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "acme-prod",
+    "region": "eu-west-1",
+    "embedding_model": "text-embedding-3-large",
+    "retention_days": 365
+  }'
+```
+
+The root key is a separate, account-scoped credential available from the
+**Account** page in the dashboard. Most users never need it — the dashboard
+will create workspaces for you.
+
+## Workspace settings
+
+| Setting | Default | Description |
+| --- | --- | --- |
+| `embedding_model` | `text-embedding-3-large` | Used for all new memories. Changing it triggers a re-embed job. |
+| `max_chunk_tokens` | `512` | Auto-chunk threshold for `content`. |
+| `chunk_overlap_tokens` | `64` | Overlap between adjacent chunks. |
+| `retention_days` | `null` | If set, memories are auto-archived after this many days from `created_at`. |
+| `dedupe_keys` | `["content"]` | Metadata keys included in the dedupe hash. |
+| `default_search_strategy` | `"hybrid"` | One of `vector`, `bm25`, `hybrid`, `rerank`, `hub-spoke`, `recency-boosted`, `time-window`. |
+
+## API keys
+
+Each workspace can have many API keys. Keys carry a single role:
+
+- `read` — can call `/v1/search` and `/v1/memories/{id}` (GET).
+- `write` — can call all read endpoints plus `/v1/memories` (POST/PATCH/DELETE).
+- `admin` — can also rotate API keys and edit workspace settings.
+
+Always pair the `Authorization` header with `x-workspace-id`. The header is
+required even though the key already implies a workspace — it makes
+cross-workspace mistakes loud instead of silent.
+
+## Multi-tenant agents
+
+If you build a SaaS agent on top of LedgerMem, you have two patterns to pick
+from:
+
+1. **One workspace per customer.** Best for strong isolation and per-customer
+   metering. Comes with a small per-workspace overhead (~20 ms cold-start on
+   the first request after idle).
+2. **One workspace, customer ID in metadata.** Cheaper and faster, but you
+   own the access control — every call must filter on `customer_id` or you
+   risk leaking memories across tenants.
+
+We recommend pattern 1 unless you have thousands of low-volume tenants.

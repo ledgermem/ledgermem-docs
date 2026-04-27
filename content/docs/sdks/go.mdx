@@ -1,0 +1,127 @@
+---
+title: Go SDK
+description: Idiomatic Go client for LedgerMem.
+---
+
+The Go SDK is hand-written, context-first, and depends only on the standard
+library plus `golang.org/x/sync` for connection pooling.
+
+- Module: `github.com/ledgermem/ledgermem-go`
+- Go: 1.22+
+
+## Install
+
+```bash
+go get github.com/ledgermem/ledgermem-go@latest
+```
+
+## Configure
+
+```go
+package main
+
+import (
+    "context"
+    "log"
+    "os"
+    "time"
+
+    "github.com/ledgermem/ledgermem-go"
+)
+
+func main() {
+    client, err := ledgermem.New(
+        ledgermem.WithAPIKey(os.Getenv("LEDGERMEM_API_KEY")),
+        ledgermem.WithWorkspace(os.Getenv("LEDGERMEM_WORKSPACE_ID")),
+        ledgermem.WithTimeout(30*time.Second),
+    )
+    if err != nil {
+        log.Fatal(err)
+    }
+    defer client.Close()
+
+    _ = client
+}
+```
+
+## Memories
+
+```go
+ctx := context.Background()
+
+mem, err := client.Memories.Create(ctx, &ledgermem.CreateMemoryRequest{
+    Content:  "User prefers dark mode.",
+    Metadata: map[string]any{"user_id": "u_123"},
+    Kind:     ledgermem.KindSemantic,
+})
+if err != nil {
+    log.Fatal(err)
+}
+
+fetched, err := client.Memories.Get(ctx, mem.ID)
+
+if err := client.Memories.Delete(ctx, mem.ID); err != nil {
+    log.Fatal(err)
+}
+```
+
+## Search
+
+```go
+results, err := client.Search(ctx, &ledgermem.SearchRequest{
+    Query:    "what does the user like?",
+    Limit:    5,
+    Strategy: ledgermem.StrategyRerank,
+    Filter:   map[string]any{"user_id": "u_123"},
+})
+if err != nil {
+    log.Fatal(err)
+}
+
+for _, hit := range results.Results {
+    log.Printf("%.3f  %s", hit.Score, hit.Content)
+}
+```
+
+## Pagination
+
+`List` returns an iterator that pages automatically:
+
+```go
+iter := client.Memories.List(ctx, &ledgermem.ListRequest{
+    Filter: map[string]any{"user_id": "u_123"},
+})
+for iter.Next() {
+    mem := iter.Current()
+    log.Println(mem.ID, mem.Content)
+}
+if err := iter.Err(); err != nil {
+    log.Fatal(err)
+}
+```
+
+## Errors
+
+API errors implement `ledgermem.Error`, which exposes `StatusCode()`,
+`RequestID()`, and a `Code` enum that matches the server-side error code:
+
+```go
+var apiErr *ledgermem.APIError
+if errors.As(err, &apiErr) {
+    if apiErr.StatusCode() == http.StatusNotFound {
+        log.Println("not found:", apiErr.RequestID())
+    }
+}
+```
+
+## Concurrency
+
+The client is safe for concurrent use. Internally it shares an
+`http.Client` with a pooled transport; do not create a new client per
+goroutine.
+
+## Context propagation
+
+Every method takes a `context.Context`. Cancellation aborts the underlying
+HTTP request, and deadlines override the per-request timeout if they would
+fire sooner.

@@ -1,0 +1,89 @@
+---
+title: Retrieval
+description: How a query becomes a list of memories, and how to bend the pipeline when you need to.
+---
+
+A search call goes through five stages. You can configure each one, but the
+defaults are good enough that most users never need to.
+
+```
+query
+  ├─ 1. expand   (optional rewrite + HyDE)
+  ├─ 2. retrieve (vector + BM25 in parallel)
+  ├─ 3. fuse     (Reciprocal Rank Fusion, k=60)
+  ├─ 4. rerank   (cross-encoder, top-50 → top-10)
+  └─ 5. filter   (metadata + ACL)
+```
+
+## Stage 1 — expand
+
+If `expand: true` is set on the request (or on the workspace default), the
+query is rewritten by a small LLM into 1-3 alternate phrasings, plus a
+[HyDE](https://arxiv.org/abs/2212.10496)-style hypothetical answer. We
+retrieve against all of them and merge the candidate lists before ranking.
+
+This adds ~80 ms to p95 latency but typically lifts recall@5 by 4-7 points
+on RealAgentMem.
+
+## Stage 2 — retrieve
+
+We always run two retrievers in parallel:
+
+- **Dense.** HNSW over pgvector. Returns top-100 by cosine similarity.
+- **Sparse.** BM25 over a tsvector index. Returns top-100 by BM25 score.
+
+You can disable either with `strategy: "vector"` or `strategy: "bm25"`. The
+default `strategy: "hybrid"` runs both.
+
+## Stage 3 — fuse
+
+We use Reciprocal Rank Fusion (RRF) with `k = 60` to combine the two ranked
+lists into one. RRF is rank-based, so it is robust to the score ranges of
+the two retrievers being on different scales — a common gotcha if you try
+to combine them naïvely with weighted sums.
+
+## Stage 4 — rerank
+
+The top-50 candidates from RRF are reranked with a cross-encoder
+(`bge-reranker-v2-m3` by default). The rerank step is what closes the gap
+between "lots of relevant chunks somewhere" and "the right chunk at rank 1".
+
+You can disable rerank with `rerank: false` to shave ~120 ms off p95
+latency at the cost of ~6 points of NDCG@10.
+
+## Stage 5 — filter
+
+Filters are applied last so that they never interact with the ranking. A
+filter is a Mongo-style query against memory metadata:
+
+```json
+{
+  "query": "what does the user like?",
+  "limit": 5,
+  "filter": {
+    "user_id": "u_123",
+    "source": { "$in": ["onboarding", "profile"] },
+    "created_at": { "$gte": "2026-01-01T00:00:00Z" }
+  }
+}
+```
+
+The filter is also where workspace-level ACLs are evaluated — for
+self-hosted deployments with row-level security, the policy is injected
+into this stage so it cannot be bypassed by a careless caller.
+
+## Strategies
+
+If you do not want to think about stages, just pick a strategy:
+
+| Strategy | When to use |
+| --- | --- |
+| `vector` | Pure semantic. Best for "vibes" queries with no shared vocabulary. |
+| `bm25` | Pure keyword. Best for queries that look like search engine queries. |
+| `hybrid` | Default. Use this. |
+| `rerank` | Hybrid + cross-encoder rerank. Use when quality matters more than 100 ms of latency. |
+| `hub-spoke` | Hierarchical retrieval — first find the right "hub" memory, then expand to its spokes. Best for highly clustered domains. |
+| `recency-boosted` | Hybrid + a logistic decay on `created_at`. Best for assistant memory. |
+| `time-window` | Hybrid filtered to a sliding window. Best for "what did we discuss last week?" queries. |
+
+See [Retrieval](/docs/retrieval) for a deeper tour of each one.

@@ -1,0 +1,83 @@
+---
+title: Pydantic AI
+description: Use LedgerMem inside Pydantic AI agents.
+---
+
+`pydantic-ai-ledgermem` provides a `Memory` dependency and a pair of
+ready-made tools (`recall`, `remember`) for Pydantic AI agents.
+
+## Install
+
+```bash
+pip install pydantic-ai-ledgermem
+```
+
+## Wire memory into an agent
+
+```python
+from pydantic_ai import Agent
+from pydantic_ai_ledgermem import LedgerMemDeps, recall_tool, remember_tool
+
+agent = Agent(
+    "openai:gpt-4o-mini",
+    deps_type=LedgerMemDeps,
+    system_prompt=(
+        "You are an assistant with long-term memory. "
+        "Use the `recall` tool whenever the user asks something that might be in memory, "
+        "and the `remember` tool whenever the user states something durable about themselves."
+    ),
+    tools=[recall_tool, remember_tool],
+)
+
+deps = LedgerMemDeps.from_env(user_id="u_123")
+result = await agent.run("What did I tell you about my favorite color?", deps=deps)
+print(result.output)
+```
+
+## Auto-recall
+
+For agents that should always recall before generating, wrap the run loop:
+
+```python
+from pydantic_ai_ledgermem import auto_recall
+
+@auto_recall(query="user_message", limit=5)
+async def chat(user_message: str, deps: LedgerMemDeps) -> str:
+    result = await agent.run(user_message, deps=deps)
+    return result.output
+```
+
+The decorator searches LedgerMem for memories relevant to `user_message`,
+sticks them into `deps.recalled_memories`, and injects them into the
+system prompt under the `{recalled}` template variable. The agent can
+still call `recall` explicitly for follow-up questions.
+
+## Streaming
+
+```python
+async with agent.run_stream("Tell me what you know about me", deps=deps) as stream:
+    async for chunk in stream.stream_text():
+        print(chunk, end="", flush=True)
+```
+
+Pydantic AI's streaming runs unchanged; memory recall happens before the
+stream begins (one extra API call), and writes happen in the background
+after the stream closes.
+
+## Validation
+
+Because LedgerMem returns structured data, you can use Pydantic's standard
+validation patterns to enforce that recalled memories match the shape your
+prompt expects:
+
+```python
+from pydantic import BaseModel
+from pydantic_ai_ledgermem import recall_typed
+
+class UserPreference(BaseModel):
+    key: str
+    value: str
+    source: str
+
+prefs = await recall_typed(deps, query="preferences", model=UserPreference, limit=10)
+```

@@ -1,0 +1,76 @@
+---
+title: Memory
+description: The atomic unit of state in LedgerMem.
+---
+
+A **memory** is the atomic unit of state in LedgerMem. Conceptually, it is a
+piece of text plus arbitrary metadata, addressable by an ID, scoped to a
+workspace.
+
+## Anatomy of a memory
+
+```json
+{
+  "id": "mem_01H8X3J9V8N5T7Q9R0K2M4P6S",
+  "content": "User prefers dark mode and uses VS Code.",
+  "metadata": {
+    "user_id": "u_123",
+    "source": "onboarding",
+    "session_id": "s_abc"
+  },
+  "embedding_model": "text-embedding-3-large",
+  "created_at": "2026-04-01T12:34:56Z",
+  "updated_at": "2026-04-01T12:34:56Z"
+}
+```
+
+| Field | Description |
+| --- | --- |
+| `id` | A `mem_*` ULID. Stable across edits. |
+| `content` | The text to embed and search over. UTF-8, no length cap, but very long blobs are auto-chunked. |
+| `metadata` | A JSON object you control. Keys are queryable as filters. |
+| `embedding_model` | The model used to vectorize this memory. Stable for the lifetime of the memory; changing the workspace embedding model triggers a re-embed job. |
+| `created_at` / `updated_at` | Server timestamps in UTC. |
+
+## Lifecycle
+
+Memories have three explicit states:
+
+1. **Live** — searchable, returned by `/v1/search`.
+2. **Archived** — not searchable, but readable via `/v1/memories/{id}`. Useful
+   for soft-delete with audit.
+3. **Deleted** — purged from storage and the index. Immediate and
+   irreversible.
+
+The default for `DELETE /v1/memories/{id}` is to archive, not delete. Pass
+`?hard=true` to actually erase.
+
+## Chunking
+
+If `content` exceeds the workspace's `max_chunk_tokens` (default 512), we
+split it into overlapping chunks at sentence boundaries before embedding. The
+chunks share the parent memory's ID and metadata, but each gets its own
+`embedding`. Search returns the parent memory; chunk-level scoring is used
+internally to pick which chunk to highlight in the response.
+
+You can override the chunker per-call by passing `chunking: { strategy:
+"none" | "fixed" | "semantic", size, overlap }` on `/v1/memories`.
+
+## Identity and dedupe
+
+LedgerMem dedupes on a normalized hash of `content` + `workspace_id` +
+relevant metadata keys (configurable per workspace). If you `POST` the same
+memory twice, the second call returns the original ID and bumps `updated_at`.
+This makes ingest pipelines idempotent — re-running the same connector
+sweep is safe.
+
+## What memories are not
+
+- They are not chat messages. If you want to store a full conversation
+  turn-by-turn, use the `conversations` API and let the server distill
+  memories from the dialogue.
+- They are not user profiles. Profile data belongs in your application
+  database; memories should hold the things your agent needs to *recall*
+  across sessions.
+- They are not embeddings. You never write an embedding directly — that is
+  the server's job, and it lets us swap models without you re-ingesting.

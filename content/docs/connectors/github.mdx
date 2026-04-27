@@ -1,0 +1,80 @@
+---
+title: GitHub connector
+description: Sync GitHub issues, PRs, and READMEs into LedgerMem.
+---
+
+The GitHub connector ingests issues, pull requests, discussions, and
+top-level docs into a LedgerMem workspace.
+
+## Install
+
+1. **Connectors -> Add new -> GitHub**
+2. **Install GitHub App** opens GitHub's app installer. Choose either an
+   organization or a personal account.
+3. Pick repositories — either all repos or a curated list.
+4. Pick a LedgerMem workspace.
+
+The first sync backfills up to 1 year of history by default. Live sync
+uses GitHub webhooks, so updates land within ~5 seconds.
+
+## What gets ingested
+
+| Source | `metadata.kind` | Notes |
+| --- | --- | --- |
+| Issue | `issue` | Body, comments, labels, assignees. |
+| Pull request | `pr` | Body, comments, review comments, files changed. |
+| Discussion | `discussion` | Top post and replies, threaded. |
+| README | `readme` | Default branch only. |
+| Wiki | `wiki` | If enabled on the repo. |
+| Releases | `release` | Tag, body, author. |
+
+Code itself is **not** ingested — for code memory, use the
+[code-aware indexing service](/docs/concepts/embedding) on a self-hosted
+deployment.
+
+## Search patterns
+
+```python
+# Find prior bugs related to a specific subsystem:
+results = lm.search(
+    query="auth token refresh failures",
+    filter={"source": "github", "kind": "issue", "labels": "auth"},
+    limit=10,
+)
+```
+
+```python
+# Find PRs that touched a specific file:
+results = lm.search(
+    query="why was this changed?",
+    filter={"source": "github", "kind": "pr", "files": "src/auth/refresh.ts"},
+    limit=5,
+)
+```
+
+## Permissions
+
+The GitHub App requests:
+
+- **Issues**: read
+- **Pull requests**: read
+- **Contents**: read (for README and wiki)
+- **Discussions**: read
+
+It does not request `Write` scopes. The
+[GitHub Action](https://github.com/ledgermem/ledgermem-github-action) is a
+separate install if you want PR-time memory writes.
+
+## Privacy and ACLs
+
+Memories from private repos carry `metadata.private=true`. Search calls
+that do not include `include_private:true` will not see them, even if
+they match. This makes it safe to share an API key across teams that
+should not see each other's private work.
+
+## Backfill
+
+For repos with very long history (10k+ issues), the initial sync can run
+for hours. You can monitor progress in
+**Connectors -> GitHub -> Sync history**, and you can pause / resume the
+backfill at any time without losing place.

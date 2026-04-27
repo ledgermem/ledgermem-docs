@@ -1,0 +1,78 @@
+---
+title: Cursor
+description: Use LedgerMem in Cursor as an MCP server for cross-project codebase memory.
+---
+
+The LedgerMem MCP server works in Cursor's agent mode. With it installed,
+Cursor's agent can recall decisions you made in other projects, remember
+your preferences across sessions, and search a workspace of project
+documentation that lives outside the open file tree.
+
+## Install
+
+1. Install the MCP server globally:
+   ```bash
+   npm install -g @ledgermem/mcp
+   ```
+
+2. Open Cursor's MCP settings:
+   - **Settings -> Cursor Settings -> MCP -> Add new MCP server**.
+
+3. Paste this config:
+   ```json
+   {
+     "name": "ledgermem",
+     "command": "ledgermem-mcp",
+     "env": {
+       "LEDGERMEM_API_KEY": "lm_live_...",
+       "LEDGERMEM_WORKSPACE_ID": "ws_..."
+     }
+   }
+   ```
+
+4. Toggle the server on. Cursor will spawn the process on the next agent
+   run.
+
+## What the agent can do
+
+Cursor's agent (Composer or chat) can call:
+
+- `recall(query, limit)` — semantic search over your workspace.
+- `remember(content, metadata)` — durable write; persists across sessions.
+- `forget(id)` — soft-delete.
+
+It also gets a `ledgermem://memories` resource it can browse when you ask
+"what's in my memory store?".
+
+## Code-aware patterns
+
+A few patterns we have seen work well in Cursor:
+
+- Add a `.cursorrules` instruction that tells the agent to call `recall`
+  before answering any "why is X like this?" question. The agent will
+  surface prior decisions and PR descriptions automatically.
+- Use the `remember` tool at the end of long sessions: ask "summarize the
+  decisions we made today and remember them under project=foo".
+- Use a separate workspace per project to keep retrieval scoped.
+
+Example `.cursorrules` snippet:
+
+```
+Before answering any "why" or "how does X work" question, call the
+`recall` MCP tool with the user's question. If the recalled memories
+already answer the question, cite the source memory and skip your own
+generation. If they conflict, surface the conflict and ask the user.
+```
+
+## Combining with the IDE
+
+The official LedgerMem
+[Cursor extension](https://cursor.directory/ledgermem) (separate from the
+MCP server) adds a sidebar that shows live recalled memories as you type.
+Both can be used together — the extension surfaces context, the MCP
+server lets the agent take action.
+
+## Multi-workspace
+
+Add multiple MCP servers, one per workspace. The tools become
+`recall_<name>` so you can target each workspace explicitly.

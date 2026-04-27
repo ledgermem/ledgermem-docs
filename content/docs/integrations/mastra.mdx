@@ -1,0 +1,79 @@
+---
+title: Mastra
+description: Use LedgerMem as the memory backend for Mastra agents and workflows.
+---
+
+[Mastra](https://mastra.ai) is a TypeScript-first agent framework. The
+`@mastra/ledgermem` plugin replaces Mastra's default vector memory with
+LedgerMem.
+
+## Install
+
+```bash
+npm install @mastra/ledgermem @mastra/core
+```
+
+## Configure
+
+```ts
+import { Mastra } from "@mastra/core";
+import { LedgerMemMemory } from "@mastra/ledgermem";
+
+const memory = new LedgerMemMemory({
+  apiKey: process.env.LEDGERMEM_API_KEY!,
+  workspaceId: process.env.LEDGERMEM_WORKSPACE_ID!,
+});
+
+export const mastra = new Mastra({
+  memory,
+  agents: { researcher, writer, reviewer },
+});
+```
+
+## Per-thread vs cross-thread memory
+
+Mastra's memory model has two layers and the LedgerMem provider supports
+both:
+
+- **Thread memory.** Scoped to one conversation. Stored under
+  `metadata.thread_id`. Used for short-term context.
+- **Working memory.** Cross-thread, scoped to a user. Stored under
+  `metadata.user_id`. Used for durable facts.
+
+Both layers share one workspace; the provider applies the right metadata
+filters internally.
+
+## Tools
+
+```ts
+import { rememberTool, recallTool } from "@mastra/ledgermem/tools";
+
+const researcher = mastra.agent({
+  name: "researcher",
+  instructions: "Always check what we already know before doing new research.",
+  model: { provider: "openai", name: "gpt-4o-mini" },
+  tools: { remember: rememberTool(memory), recall: recallTool(memory) },
+});
+```
+
+## Workflows
+
+For Mastra workflows, the provider exposes a `withMemory` wrapper that
+injects recalled context at the top of any step:
+
+```ts
+import { Workflow } from "@mastra/core";
+import { withMemory } from "@mastra/ledgermem/workflow";
+
+const flow = new Workflow({ name: "draft-and-review" })
+  .step(withMemory(researchStep, { userId: "u_123" }))
+  .step(writeStep)
+  .step(reviewStep);
+```
+
+## Observability
+
+Memory traffic is exposed under the `mastra.memory.ledgermem` namespace in
+Mastra's built-in tracer. Each span carries the strategy used, the
+candidate count before rerank, and the final post-rerank list — useful for
+debugging "why did the agent forget X?" issues.

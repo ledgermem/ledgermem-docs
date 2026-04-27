@@ -1,0 +1,97 @@
+---
+title: C# SDK
+description: .NET 8+ client for LedgerMem.
+---
+
+The C# SDK targets .NET 8+ and ships with full nullable annotations and
+trim-friendly source generators.
+
+- NuGet: `LedgerMem`
+- GitHub: [`ledgermem/ledgermem-csharp`](https://github.com/ledgermem/ledgermem-csharp)
+
+## Install
+
+```bash
+dotnet add package LedgerMem
+```
+
+## Configure
+
+```csharp
+using LedgerMem;
+
+var client = new LedgerMemClient(new LedgerMemOptions
+{
+    ApiKey = Environment.GetEnvironmentVariable("LEDGERMEM_API_KEY")!,
+    WorkspaceId = Environment.GetEnvironmentVariable("LEDGERMEM_WORKSPACE_ID")!,
+    Timeout = TimeSpan.FromSeconds(30),
+});
+```
+
+For ASP.NET Core projects, register via DI:
+
+```csharp
+builder.Services.AddLedgerMem(options =>
+{
+    options.ApiKey = builder.Configuration["LedgerMem:ApiKey"]!;
+    options.WorkspaceId = builder.Configuration["LedgerMem:WorkspaceId"]!;
+});
+```
+
+## Memories
+
+```csharp
+var memory = await client.Memories.CreateAsync(new CreateMemoryRequest
+{
+    Content = "User prefers dark mode.",
+    Metadata = new Dictionary<string, object> { ["user_id"] = "u_123" },
+    Kind = MemoryKind.Semantic,
+});
+
+var fetched = await client.Memories.GetAsync(memory.Id);
+await client.Memories.DeleteAsync(memory.Id);
+```
+
+## Search
+
+```csharp
+var response = await client.SearchAsync(new SearchRequest
+{
+    Query = "what does the user like?",
+    Limit = 5,
+    Strategy = SearchStrategy.Rerank,
+    Filter = new Dictionary<string, object> { ["user_id"] = "u_123" },
+});
+
+foreach (var hit in response.Results)
+{
+    Console.WriteLine($"{hit.Score:F3}  {hit.Content}");
+}
+```
+
+## Streaming
+
+```csharp
+await foreach (var hit in client.SearchStreamAsync("what did we decide?", limit: 200))
+{
+    Console.WriteLine($"{hit.Id}  {hit.Score:F3}");
+}
+```
+
+## Errors
+
+```csharp
+try
+{
+    await client.Memories.GetAsync("mem_does_not_exist");
+}
+catch (LedgerMemException ex) when (ex.StatusCode == 404)
+{
+    Console.WriteLine($"not found: {ex.RequestId}");
+}
+```
+
+## AOT
+
+The SDK is fully compatible with `PublishAot=true`. JSON serialization uses
+the source-generated `System.Text.Json` context — no reflection at runtime.

@@ -1,0 +1,12 @@
+{
+  "title": "Connectors",
+  "pages": [
+    "slack",
+    "discord",
+    "notion",
+    "obsidian",
+    "gdrive",
+    "github",
+    "linear"
+  ]
+}

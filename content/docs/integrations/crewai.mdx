@@ -1,0 +1,74 @@
+---
+title: CrewAI
+description: Give a CrewAI crew shared, durable memory across tasks and runs.
+---
+
+CrewAI agents are great at short-lived tasks but struggle to remember
+anything between runs. The `crewai-ledgermem` package gives every agent in
+a crew a shared, durable memory backed by LedgerMem.
+
+## Install
+
+```bash
+pip install crewai-ledgermem
+```
+
+## Add memory to a crew
+
+```python
+from crewai import Agent, Crew, Task
+from crewai_ledgermem import LedgerMemMemory
+
+memory = LedgerMemMemory.from_env(crew_name="research-crew")
+
+researcher = Agent(
+    role="Researcher",
+    goal="Surface relevant prior findings before starting new research.",
+    memory=True,
+    backstory="You build on the team's prior work; you do not repeat it.",
+)
+
+writer = Agent(
+    role="Writer",
+    goal="Produce summaries that cite the team's prior work.",
+    memory=True,
+)
+
+crew = Crew(
+    agents=[researcher, writer],
+    tasks=[
+        Task(description="Research recent advances in long-term memory.", agent=researcher),
+        Task(description="Write a summary citing internal prior work.", agent=writer),
+    ],
+    memory=memory,
+)
+
+result = crew.kickoff()
+```
+
+## Per-agent vs shared memory
+
+The integration supports both:
+
+- **Shared.** A single `LedgerMemMemory` instance passed to `Crew(memory=...)`.
+  All agents read and write to the same workspace; useful for collaborative
+  research, planning, etc.
+- **Per-agent.** Construct one `LedgerMemMemory` per agent with a different
+  `agent_id` and pass it via `Agent(memory=...)`. Useful when agents need
+  private scratch-space.
+
+## Cross-run memory
+
+By default, memory persists across runs of the same crew. To start fresh
+(e.g. for tests), pass `crew_name="research-crew-test"` and set
+`retention_days=1` on the workspace.
+
+## Patterns we like
+
+- Use a "Reviewer" agent whose only job is to surface contradictions
+  between the crew's current draft and prior memories.
+- Use `kind="hub"` for project briefs and tag every spoke memory with the
+  project's `hub_id`. Then turn on `strategy="hub-spoke"` in the memory
+  config so retrieval scopes by project automatically.
+- For long-running crews, set `auto_distill: true` so episodic findings
+  consolidate into semantic facts overnight.

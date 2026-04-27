@@ -1,0 +1,94 @@
+---
+title: Claude Desktop
+description: Plug LedgerMem into Claude Desktop via the Model Context Protocol.
+---
+
+The LedgerMem MCP server gives Claude Desktop a `recall` and `remember`
+tool, plus a `list_memories` resource. Once installed, Claude can search
+your private memory store directly without you copy-pasting context.
+
+## Install
+
+You have two options.
+
+### One-click install (recommended)
+
+Open Claude Desktop, go to **Settings -> Extensions -> Browse**, search
+for **LedgerMem**, and click **Install**. The extension prompts you for
+your API key and workspace ID, then writes the right entry to
+`claude_desktop_config.json` for you.
+
+### Manual install
+
+If you want to wire it up by hand, install the MCP server globally:
+
+```bash
+npm install -g @ledgermem/mcp
+```
+
+Then add this to `~/Library/Application Support/Claude/claude_desktop_config.json`
+(macOS) or `%APPDATA%\Claude\claude_desktop_config.json` (Windows):
+
+```json
+{
+  "mcpServers": {
+    "ledgermem": {
+      "command": "ledgermem-mcp",
+      "env": {
+        "LEDGERMEM_API_KEY": "lm_live_...",
+        "LEDGERMEM_WORKSPACE_ID": "ws_..."
+      }
+    }
+  }
+}
+```
+
+Restart Claude Desktop. You should see a **LedgerMem** indicator in the
+chat composer's tool palette.
+
+## What Claude can do
+
+Once installed, Claude has three new capabilities:
+
+| Tool | Purpose |
+| --- | --- |
+| `recall` | Search your LedgerMem workspace and return up to 10 results. |
+| `remember` | Write a new memory. |
+| `forget` | Soft-delete a memory by ID. |
+
+It also has one resource:
+
+- `ledgermem://memories?filter=...` — browseable list of your memories,
+  paginated.
+
+Example chats that work out of the box:
+
+- "What did I tell you last week about my marathon training?" -> Claude
+  calls `recall` with the right query, then answers.
+- "Remember that my sister's birthday is March 12th." -> Claude calls
+  `remember(content="Sister's birthday is March 12th.", metadata={...})`.
+- "Forget what I said about the Acme deal — it fell through." -> Claude
+  calls `recall`, finds the relevant memory, then `forget`.
+
+## Multi-workspace
+
+If you have multiple workspaces (work + personal), add a separate MCP
+server entry for each:
+
+```json
+{
+  "mcpServers": {
+    "ledgermem-work":     { "command": "ledgermem-mcp", "env": { "LEDGERMEM_API_KEY": "...", "LEDGERMEM_WORKSPACE_ID": "ws_work_..." } },
+    "ledgermem-personal": { "command": "ledgermem-mcp", "env": { "LEDGERMEM_API_KEY": "...", "LEDGERMEM_WORKSPACE_ID": "ws_personal_..." } }
+  }
+}
+```
+
+The tools become `recall_work`, `recall_personal`, etc.
+
+## Privacy
+
+The MCP server runs locally in your machine. Only the queries Claude
+chooses to send (the `recall` argument string) leave your machine. No
+chat content is implicitly written — Claude must explicitly call
+`remember` for anything to be stored.

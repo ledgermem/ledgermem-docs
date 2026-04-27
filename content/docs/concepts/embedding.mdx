@@ -1,0 +1,75 @@
+---
+title: Embedding
+description: How LedgerMem turns text into vectors, and why you should never write them yourself.
+---
+
+LedgerMem manages embeddings for you. You write text; the server picks the
+model, batches the calls, retries the failures, and indexes the result in
+HNSW. You never touch a vector.
+
+## Why managed embeddings?
+
+Three reasons:
+
+1. **Model upgrades.** When OpenAI ships a better model, we run a background
+   re-embed job for every workspace that opts in. Your search quality goes up
+   without any code change on your side.
+2. **Cost control.** We batch up to 2048 inputs per embedding call and cache
+   embedding results by content hash. Naïve client-side embedding is 3-5x
+   more expensive at the same volume.
+3. **Consistency.** Every memory in a workspace is embedded with the same
+   model, the same chunking strategy, and the same normalization. Mixing
+   models in one index destroys ANN quality.
+
+## Supported models
+
+| Model | Dimensions | Default for | Notes |
+| --- | --- | --- | --- |
+| `text-embedding-3-large` | 3072 | New workspaces | Best quality, ~3 ms server-side per chunk. |
+| `text-embedding-3-small` | 1536 | Cost-sensitive | 1/5 the price, ~5% quality drop on RealAgentMem. |
+| `voyage-3` | 1024 | Code-heavy workloads | Better on code content; slightly slower. |
+| `cohere-embed-v3` | 1024 | Multilingual | Strong on non-English. |
+| `bge-large-en-v1.5` | 1024 | Self-hosted | Available only in self-hosted deployments. |
+
+You change the workspace model with a `PATCH /v1/workspaces/{id}`. The
+re-embed job runs in the background and reports progress on
+`/v1/workspaces/{id}/jobs`.
+
+## Index settings
+
+We use [pgvector](https://github.com/pgvector/pgvector) HNSW indexes with
+`m = 16` and `ef_construction = 200` by default — the values our internal
+benchmarks settled on for the recall/latency Pareto frontier. Read-time
+`ef_search` is auto-tuned per query based on the requested `limit`.
+
+Workspaces with more than 50M memories get migrated to a sharded index
+automatically. The shard key is the workspace ID's first byte — even
+distribution at scale.
+
+## Bring your own embedding (BYOE)
+
+For self-hosted deployments only, you can configure an external embedding
+endpoint:
+
+```bash
+curl -X PATCH https://api.proofly.dev/v1/workspaces/{id} \
+  -H "Authorization: Bearer $LEDGERMEM_ADMIN_KEY" \
+  -d '{
+    "embedding_provider": {
+      "type": "openai-compatible",
+      "base_url": "https://embeddings.internal/v1",
+      "model": "internal-bge-large",
+      "dimensions": 1024
+    }
+  }'
+```
+
+The endpoint must implement the OpenAI `/v1/embeddings` shape. We do not
+support BYOE on the managed cloud — too many sharp edges around quotas and
+auth.
+
+## Versioning
+
+Every memory carries the `embedding_model` and `embedding_version` it was
+indexed with. When we upgrade or re-embed, we keep both indexes hot for 24
+hours so an in-flight search never sees a half-rebuilt state.

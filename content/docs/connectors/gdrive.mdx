@@ -1,0 +1,88 @@
+---
+title: Google Drive connector
+description: Sync Google Drive folders into LedgerMem.
+---
+
+The Google Drive connector watches one or more folders and ingests every
+supported file into a LedgerMem workspace.
+
+## Install
+
+1. **Connectors -> Add new -> Google Drive**
+2. **Connect Google account** opens the Google OAuth flow. Choose the
+   account whose Drive you want to ingest.
+3. Pick folders. The connector recurses into subfolders by default.
+4. Pick a LedgerMem workspace.
+
+The first sync starts within a minute. Drive's webhook subscription model
+means live sync is event-driven — no polling.
+
+## Supported file types
+
+| Type | Notes |
+| --- | --- |
+| Google Docs | Native fetch via Drive API; preserves formatting. |
+| Google Sheets | First sheet, up to 5000 rows; rendered as Markdown. |
+| Google Slides | Each slide is one chunk; speaker notes included. |
+| PDF | OCR via the document AI pipeline if the PDF is image-only. |
+| Word (.docx) | Converted to Markdown. |
+| Plain text / Markdown | Ingested verbatim. |
+| Spreadsheets (.xlsx) | First sheet only; same caveats as Google Sheets. |
+
+Files larger than 100 MB are skipped with a warning.
+
+## Metadata
+
+For each file:
+
+- `content`: the file's text (extracted from any supported format).
+- `metadata.source`: `gdrive`.
+- `metadata.gdrive_file_id`, `metadata.gdrive_url`.
+- `metadata.title`, `metadata.mime_type`.
+- `metadata.owner_email`, `metadata.last_modified`.
+- `metadata.folder_path`: a slash-delimited path of folder names from your
+  chosen root.
+
+## Search patterns
+
+```python
+# Find proposal drafts:
+results = lm.search(
+    query="Q3 marketing budget",
+    filter={"source": "gdrive", "folder_path": "Sales/Proposals"},
+    limit=5,
+)
+```
+
+```python
+# Find docs owned by a specific person:
+results = lm.search(
+    query="onboarding guide",
+    filter={"source": "gdrive", "owner_email": "alice@acme.com"},
+    limit=5,
+)
+```
+
+## Permissions
+
+The connector requests `drive.readonly` and never asks for write scopes.
+File ACLs are honored: only files visible to the connector's authorized
+account are ingested. If a file is later restricted or deleted, the
+corresponding memory is archived within ~10 seconds.
+
+## Selective sync
+
+Add **Rules** to filter what gets ingested:
+
+- **By extension**: only `.pdf` and `.docx`.
+- **By size**: skip files under 1 KB (mostly empty).
+- **By modified time**: skip files unchanged in the last year.
+
+Rules are evaluated server-side at ingest time, so they save embedding
+cost.
+
+## Cost note
+
+Drive ingest is the most expensive connector to run because OCR on PDFs is
+slow. We recommend tagging the relevant folders rather than the whole
+"My Drive" root unless you have a specific reason to ingest everything.

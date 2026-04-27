@@ -1,0 +1,130 @@
+---
+title: Python SDK
+description: Official LedgerMem client for Python 3.10+.
+---
+
+The Python SDK is a thin, typed wrapper over the LedgerMem REST API.
+
+- PyPI: [`ledgermem`](https://pypi.org/project/ledgermem/)
+- GitHub: [`ledgermem/ledgermem-python`](https://github.com/ledgermem/ledgermem-python)
+- Python: 3.10+
+- Async: yes — every method has an `a*` counterpart that returns a coroutine.
+
+## Install
+
+```bash
+pip install ledgermem
+# or
+uv add ledgermem
+# or
+poetry add ledgermem
+```
+
+## Configure
+
+```python
+from ledgermem import LedgerMem
+
+# Reads LEDGERMEM_API_KEY and LEDGERMEM_WORKSPACE_ID from the environment.
+lm = LedgerMem()
+
+# Or pass them explicitly:
+lm = LedgerMem(
+    api_key="lm_live_...",
+    workspace_id="ws_...",
+    base_url="https://api.proofly.dev",
+    timeout=30.0,
+    max_retries=2,
+)
+```
+
+## Memories
+
+```python
+# Create
+memory = lm.memories.create(
+    content="User prefers dark mode.",
+    metadata={"user_id": "u_123"},
+    kind="semantic",
+)
+
+# Read
+fetched = lm.memories.get(memory.id)
+
+# Update
+lm.memories.update(memory.id, metadata={"user_id": "u_123", "updated_by": "agent"})
+
+# Delete
+lm.memories.delete(memory.id)
+
+# List (returns an iterator that pages automatically)
+for memory in lm.memories.list(filter={"user_id": "u_123"}):
+    print(memory.id, memory.content)
+```
+
+## Search
+
+```python
+results = lm.search(
+    query="what does the user like in their editor?",
+    limit=5,
+    strategy="rerank",
+    filter={"user_id": "u_123"},
+)
+
+for hit in results.results:
+    print(hit.score, hit.content)
+```
+
+## Async
+
+Every sync method has an async twin under the same client:
+
+```python
+import asyncio
+from ledgermem import LedgerMem
+
+async def main():
+    async with LedgerMem.async_client() as lm:
+        await lm.memories.create(content="...")
+        results = await lm.search(query="...", limit=5)
+        for hit in results.results:
+            print(hit.content)
+
+asyncio.run(main())
+```
+
+The async client uses `httpx.AsyncClient` under the hood; share one client
+across many concurrent calls — do not create a new client per request.
+
+## Pydantic models
+
+Every response is a `pydantic.BaseModel`, so you get autocomplete,
+validation, and `.model_dump()` for free:
+
+```python
+from ledgermem.types import Memory, SearchHit
+
+memory: Memory = lm.memories.get("mem_abc")
+print(memory.model_dump_json(indent=2))
+```
+
+## Error handling
+
+```python
+from ledgermem.errors import LedgerMemError, NotFoundError
+
+try:
+    lm.memories.get("mem_does_not_exist")
+except NotFoundError as exc:
+    print("not found:", exc.request_id)
+except LedgerMemError as exc:
+    print("api error:", exc.status, exc.message)
+```
+
+## Tracing
+
+The SDK emits OpenTelemetry spans for every HTTP call when
+`opentelemetry-api` is installed. Each span carries the request ID, the
+endpoint, and the workspace ID, so you can correlate client traces with
+server logs.

@@ -1,0 +1,20 @@
+{
+  "title": "LedgerMem Docs",
+  "pages": [
+    "index",
+    "quickstart",
+    "---Core---",
+    "concepts",
+    "retrieval",
+    "self-hosting",
+    "security",
+    "benchmarks",
+    "migrations",
+    "---Reference---",
+    "api-reference",
+    "sdks",
+    "integrations",
+    "connectors",
+    "mcp"
+  ]
+}

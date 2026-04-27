@@ -1,0 +1,79 @@
+---
+title: AutoGen
+description: Use LedgerMem as the long-term memory backend for AutoGen agents.
+---
+
+The `autogen-ledgermem` package adds a `LedgerMemMemory` provider to
+AutoGen, letting groups of agents share durable, indexed memory across runs.
+
+## Install
+
+```bash
+pip install autogen-ledgermem
+```
+
+## Wire it up
+
+```python
+from autogen_agentchat.agents import AssistantAgent
+from autogen_agentchat.teams import RoundRobinGroupChat
+from autogen_ext.models.openai import OpenAIChatCompletionClient
+from autogen_ledgermem import LedgerMemMemory
+
+memory = LedgerMemMemory.from_env(team_name="proposal-team")
+
+model = OpenAIChatCompletionClient(model="gpt-4o-mini")
+
+planner = AssistantAgent("planner", model_client=model, memory=[memory])
+writer = AssistantAgent("writer", model_client=model, memory=[memory])
+reviewer = AssistantAgent("reviewer", model_client=model, memory=[memory])
+
+team = RoundRobinGroupChat([planner, writer, reviewer], max_turns=6)
+
+await team.run(task="Draft a proposal that builds on our prior wins.")
+```
+
+## What memory does
+
+On every agent turn, the integration:
+
+1. Searches the workspace for memories relevant to the agent's incoming
+   message and prepends them to the system prompt as context.
+2. Inspects the agent's outgoing message for novel facts using a small
+   classifier; when found, writes them to the workspace as new memories
+   tagged with the agent's name.
+3. Emits an OTel span describing the search + write so you can audit the
+   memory traffic later.
+
+You can opt out of automatic writes with `LedgerMemMemory(autocommit=False)`
+and call `memory.add(...)` manually from inside an agent's tool.
+
+## Filters
+
+Every memory carries `team_name` and `agent_id` metadata, so you can scope
+retrieval:
+
+```python
+memory = LedgerMemMemory.from_env(
+    team_name="proposal-team",
+    search_filter={"team_name": "proposal-team"},
+)
+```
+
+## Tool-style memory
+
+If you would rather give the LLM explicit control, register memory as a
+tool instead:
+
+```python
+from autogen_ledgermem import remember_tool, recall_tool
+
+planner = AssistantAgent(
+    "planner",
+    model_client=model,
+    tools=[remember_tool(memory), recall_tool(memory)],
+)
+```
+
+The agent can then choose when to call `remember(...)` and `recall(...)`
+during its turn.

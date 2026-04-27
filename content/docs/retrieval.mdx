@@ -1,0 +1,110 @@
+---
+title: Retrieval
+description: A deeper tour of LedgerMem's retrieval pipeline and the strategies you can choose from.
+---
+
+If you skimmed [Concepts > Retrieval](/docs/concepts/retrieval), you have
+the high-level picture. This page goes deeper on how to pick a strategy,
+how the pipeline behaves under load, and how to debug a search that did
+not return what you expected.
+
+## Picking a strategy
+
+| Workload | Pick |
+| --- | --- |
+| Personal assistant remembering user facts | `recency-boosted` |
+| RAG over a stable corpus (docs, wiki) | `rerank` |
+| Mixed: facts and project context | `hybrid` (default) |
+| Highly clustered domain (many tight projects) | `hub-spoke` |
+| "What did we discuss this week?" | `time-window` |
+| Pure keyword search (e.g. SKU codes) | `bm25` |
+| Pure semantic / no shared vocabulary | `vector` |
+
+If you cannot decide, use `hybrid` — it is the cheapest strategy that gets
+within a few points of the best on every benchmark we run.
+
+## The pipeline under load
+
+Every search call goes through the five-stage pipeline. Internally, each
+stage has its own concurrency budget; the overall p95 latency is the
+critical-path sum, not the sum of all stages.
+
+| Stage | Typical latency | Optional? |
+| --- | --- | --- |
+| Expand | 50-100 ms | Yes (default off) |
+| Vector retrieve | 8-20 ms | Yes (set `strategy: bm25`) |
+| BM25 retrieve | 4-12 ms | Yes (set `strategy: vector`) |
+| RRF fuse | < 1 ms | No |
+| Rerank | 100-150 ms | Yes (set `rerank: false`) |
+| Filter | < 1 ms | No |
+
+For latency-sensitive callers, `strategy: hybrid, rerank: false` keeps p95
+under 50 ms with a small recall hit (~3-4 points).
+
+## Tuning
+
+The most common knobs:
+
+- **`limit`**: lower is faster (rerank gets a smaller candidate pool).
+- **`strategy: hybrid` + `rerank: true`**: the quality default.
+- **`expand: true`**: lifts recall for vague queries; costs 50-100 ms.
+- **`filter`**: applied after ranking, so it can return fewer than `limit`
+  results if filters are tight. Pre-filter with a workspace-level rule
+  if you need a guaranteed `limit`.
+
+## Debugging "why did I not get X?"
+
+Enable trace mode on a single call:
+
+```ts
+const results = await lm.search({
+  query: "...",
+  limit: 5,
+  trace: true,  // adds per-stage info to the response
+});
+console.log(results.trace);
+```
+
+The trace contains:
+
+- The expanded queries (if `expand: true`).
+- The top-100 vector candidates with raw cosine scores.
+- The top-100 BM25 candidates with raw scores.
+- The post-RRF fused ranking with the RRF scores.
+- The post-rerank top-50 with cross-encoder scores.
+- The final post-filter list.
+
+If your expected memory shows up in the candidate pool but loses at
+rerank, your text is similar but not the best match — consider tweaking
+the memory's content. If it never shows up at all, your embedding model
+genuinely did not find it; try `expand: true` or adjust the memory
+content.
+
+## Self-hosted overrides
+
+In a self-hosted deployment, you can swap any stage:
+
+```yaml
+# config/retrieval.yaml
+expand:
+  enabled: true
+  model: gpt-4o-mini
+  variants: 3
+rerank:
+  enabled: true
+  model: bge-reranker-v2-m3
+  device: cuda:0
+fuse:
+  algorithm: rrf
+  k: 60
+```
+
+Restart the workers to pick up new settings.
+
+## Caching
+
+Search results are not cached by default — most agent traffic asks
+slightly different questions every time, so a cache hit rate would be
+low. If you have repetitive queries (dashboards, monitors), set
+`cache: { ttl: 300 }` on the request to enable a query+filter+strategy
+cache for 5 minutes.

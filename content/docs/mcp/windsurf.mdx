@@ -1,0 +1,78 @@
+---
+title: Windsurf
+description: Add LedgerMem to Windsurf via MCP for project memory in Cascade.
+---
+
+Windsurf's Cascade agent supports MCP. Wiring up LedgerMem gives Cascade
+a `recall`/`remember`/`forget` toolset so it can use your project memory
+during code edits and conversations.
+
+## Install
+
+1. Install the MCP server:
+   ```bash
+   npm install -g @ledgermem/mcp
+   ```
+
+2. Open Windsurf MCP config:
+   - **Windsurf -> Preferences -> Plugins -> MCP -> Edit `mcp_config.json`**.
+
+3. Add the server:
+   ```json
+   {
+     "mcpServers": {
+       "ledgermem": {
+         "command": "ledgermem-mcp",
+         "env": {
+           "LEDGERMEM_API_KEY": "lm_live_...",
+           "LEDGERMEM_WORKSPACE_ID": "ws_..."
+         }
+       }
+     }
+   }
+   ```
+
+4. Click the **Refresh MCP** button. The new tools appear in Cascade's
+   tool palette.
+
+## Cascade tool patterns
+
+Windsurf's Cascade calls MCP tools when it judges them helpful. To
+encourage Cascade to use LedgerMem, add a project-level instruction in
+`.windsurfrules`:
+
+```
+You have access to a long-term memory tool called `ledgermem.recall`.
+Always call it before claiming you don't know something — the user has
+likely told you the answer in a prior session, and the memory store
+contains those statements.
+
+When the user explicitly says "remember", "save this", or "make a note",
+call `ledgermem.remember` with the relevant content and a meaningful
+`metadata.source` and `metadata.user_id`.
+```
+
+## What gets stored
+
+By default, nothing is stored implicitly — Cascade has to call `remember`.
+This is the safe default for a coding tool. If you want to capture every
+chat turn, run a separate background process that polls
+`/v1/conversations/{id}/messages` and writes to LedgerMem.
+
+## Workspace per project
+
+The most common pattern is one workspace per project. Windsurf can route
+to the right MCP server based on the open project's path. Edit your
+`mcp_config.json` to define one entry per workspace, then use
+Windsurf's **MCP enable/disable** UI to flip the right one on per
+project.
+
+## Troubleshooting
+
+- **Tools don't appear**: confirm the server starts cleanly with
+  `ledgermem-mcp --help` from a terminal. Most failures are bad env vars.
+- **`recall` returns nothing**: check your workspace ID. The MCP server
+  scopes to the workspace passed in env; an empty workspace returns
+  empty results.
+- **High latency**: set `LEDGERMEM_BASE_URL` to the closest region's
+  endpoint (`api-us.proofly.dev`, `api-eu.proofly.dev`, etc.).

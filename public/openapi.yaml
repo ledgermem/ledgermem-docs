@@ -1,0 +1,319 @@
+openapi: 3.1.0
+info:
+  title: LedgerMem API
+  version: "0.1.0"
+  description: |
+    LedgerMem is a managed long-term memory layer for LLM agents. Every
+    request must carry an `Authorization: Bearer <api_key>` header and an
+    `x-workspace-id: <workspace_id>` header.
+  contact:
+    name: LedgerMem
+    email: founders@proofly.dev
+    url: https://docs.proofly.dev
+  license:
+    name: Apache-2.0
+    url: https://www.apache.org/licenses/LICENSE-2.0
+servers:
+  - url: https://api.proofly.dev
+    description: Production
+  - url: https://api-eu.proofly.dev
+    description: EU region
+  - url: https://api-ap.proofly.dev
+    description: Asia-Pacific region
+
+security:
+  - bearerAuth: []
+    workspaceHeader: []
+
+paths:
+  /v1/search:
+    post:
+      summary: Search a workspace for memories
+      operationId: search
+      tags: [search]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SearchRequest"
+      responses:
+        "200":
+          description: Search results
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SearchResponse"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /v1/memories:
+    post:
+      summary: Create a memory
+      operationId: createMemory
+      tags: [memories]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateMemoryRequest"
+      responses:
+        "201":
+          description: Memory created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Memory"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+    get:
+      summary: List memories with optional filters
+      operationId: listMemories
+      tags: [memories]
+      parameters:
+        - name: limit
+          in: query
+          schema: { type: integer, default: 50, maximum: 200 }
+        - name: cursor
+          in: query
+          schema: { type: string }
+        - name: filter
+          in: query
+          description: JSON-encoded metadata filter
+          schema: { type: string }
+      responses:
+        "200":
+          description: Memory page
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MemoryPage"
+
+  /v1/memories/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string }
+    get:
+      summary: Fetch one memory
+      operationId: getMemory
+      tags: [memories]
+      responses:
+        "200":
+          description: The memory
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Memory" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    patch:
+      summary: Update a memory
+      operationId: updateMemory
+      tags: [memories]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateMemoryRequest"
+      responses:
+        "200":
+          description: Updated memory
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Memory" }
+    delete:
+      summary: Delete (soft or hard)
+      operationId: deleteMemory
+      tags: [memories]
+      parameters:
+        - name: hard
+          in: query
+          schema: { type: boolean, default: false }
+      responses:
+        "204":
+          description: Deleted
+
+  /v1/workspaces/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string }
+    get:
+      summary: Get workspace settings
+      operationId: getWorkspace
+      tags: [workspaces]
+      responses:
+        "200":
+          description: The workspace
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Workspace" }
+    patch:
+      summary: Update workspace settings
+      operationId: updateWorkspace
+      tags: [workspaces]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateWorkspaceRequest"
+      responses:
+        "200":
+          description: Updated workspace
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Workspace" }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: opaque
+    workspaceHeader:
+      type: apiKey
+      in: header
+      name: x-workspace-id
+
+  responses:
+    Unauthorized:
+      description: Missing or invalid auth headers
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    ValidationFailed:
+      description: Request body failed validation
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    RateLimited:
+      description: Per-workspace QPS limit reached
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message, request_id]
+          properties:
+            code: { type: string, example: memory_not_found }
+            message: { type: string }
+            request_id: { type: string, example: req_01H... }
+
+    Memory:
+      type: object
+      required: [id, content, kind, created_at, updated_at]
+      properties:
+        id: { type: string, example: mem_01H8X3... }
+        content: { type: string }
+        metadata: { type: object, additionalProperties: true }
+        kind: { type: string, enum: [semantic, episodic, hub] }
+        embedding_model: { type: string, example: text-embedding-3-large }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+        archived_at: { type: string, format: date-time, nullable: true }
+
+    CreateMemoryRequest:
+      type: object
+      required: [content]
+      properties:
+        content: { type: string, minLength: 1 }
+        metadata: { type: object, additionalProperties: true }
+        kind: { type: string, enum: [semantic, episodic, hub] }
+
+    UpdateMemoryRequest:
+      type: object
+      properties:
+        content: { type: string, minLength: 1 }
+        metadata: { type: object, additionalProperties: true }
+
+    MemoryPage:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: array
+          items: { $ref: "#/components/schemas/Memory" }
+        next_cursor: { type: string, nullable: true }
+
+    SearchRequest:
+      type: object
+      required: [query]
+      properties:
+        query: { type: string, minLength: 1 }
+        limit: { type: integer, default: 5, maximum: 100 }
+        strategy:
+          type: string
+          enum: [vector, bm25, hybrid, rerank, hub-spoke, recency-boosted, time-window]
+          default: hybrid
+        filter: { type: object, additionalProperties: true }
+        rerank: { type: boolean, default: true }
+        expand: { type: boolean, default: false }
+        kind: { type: string, enum: [semantic, episodic, hub] }
+
+    SearchHit:
+      type: object
+      required: [id, content, score]
+      properties:
+        id: { type: string }
+        content: { type: string }
+        score: { type: number, format: float }
+        metadata: { type: object, additionalProperties: true }
+
+    SearchResponse:
+      type: object
+      required: [results]
+      properties:
+        results:
+          type: array
+          items: { $ref: "#/components/schemas/SearchHit" }
+        latency_ms:
+          type: object
+          properties:
+            retrieve: { type: integer }
+            rerank: { type: integer }
+            total: { type: integer }
+
+    Workspace:
+      type: object
+      required: [id, name, region]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        region: { type: string, enum: [us-east-1, eu-west-1, ap-southeast-1] }
+        embedding_model: { type: string }
+        max_chunk_tokens: { type: integer }
+        chunk_overlap_tokens: { type: integer }
+        retention_days: { type: integer, nullable: true }
+        default_search_strategy: { type: string }
+
+    UpdateWorkspaceRequest:
+      type: object
+      properties:
+        embedding_model: { type: string }
+        max_chunk_tokens: { type: integer }
+        chunk_overlap_tokens: { type: integer }
+        retention_days: { type: integer, nullable: true }
+        default_search_strategy: { type: string }
+
+tags:
+  - name: search
+    description: Read memories
+  - name: memories
+    description: Write and manage memories
+  - name: workspaces
+    description: Configure workspace-level settings

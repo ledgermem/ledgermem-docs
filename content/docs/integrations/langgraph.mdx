@@ -1,0 +1,79 @@
+---
+title: LangGraph
+description: Use LedgerMem as a long-term memory store and checkpointer for LangGraph state graphs.
+---
+
+`langgraph-ledgermem` provides two complementary primitives:
+
+1. A **`Checkpointer`** so a graph's per-thread state survives restarts.
+2. A **`Memory` reducer** that automatically appends important messages to a
+   long-term LedgerMem store and surfaces relevant ones in the next turn's
+   state.
+
+## Install
+
+```bash
+pip install langgraph-ledgermem
+```
+
+## Checkpointer
+
+```python
+from langgraph.graph import StateGraph
+from langgraph_ledgermem import LedgerMemCheckpointer
+
+checkpointer = LedgerMemCheckpointer.from_env(namespace="my-graph")
+
+graph = StateGraph(MyState)
+# ... add nodes and edges ...
+app = graph.compile(checkpointer=checkpointer)
+
+result = app.invoke(
+    {"messages": [{"role": "user", "content": "Hi"}]},
+    config={"configurable": {"thread_id": "thread-42"}},
+)
+```
+
+The checkpointer stores per-thread state under
+`namespace=my-graph,thread_id=thread-42`, so each thread is independently
+resumable. Storage is the same workspace you use for memory — there is no
+extra service to provision.
+
+## Long-term memory reducer
+
+```python
+from langgraph_ledgermem import long_term_memory_reducer
+
+class MyState(TypedDict):
+    messages: Annotated[list, add_messages]
+    memories: Annotated[list, long_term_memory_reducer(workspace_id="ws_...")]
+```
+
+The reducer:
+
+- Inspects every new message added to the thread.
+- Decides whether the message contains a durable fact (using a small
+  classifier).
+- If yes, writes it to LedgerMem with `kind="semantic"` and the user_id from
+  the thread config.
+- On every invocation, retrieves the top-5 relevant memories for the new
+  user message and stitches them into `state["memories"]`.
+
+You then reference `state["memories"]` in your prompt template.
+
+## Cross-thread memory
+
+The reducer scopes to a `user_id`, not a `thread_id`. So a memory written
+in thread A is recalled in thread B as long as both threads carry the same
+`user_id` in the LangGraph config.
+
+## Production tips
+
+- Set `auto_distill: true` on the workspace if you want the server to
+  consolidate frequently-stated episodic memories into stable semantic
+  ones.
+- Use `kind="hub"` for project-level summaries and turn on
+  `strategy="hub-spoke"` in the reducer config for tightly clustered
+  domains.
+- Monitor the `langgraph_ledgermem_calls_total` Prometheus counter to
+  budget your token spend.

@@ -1,0 +1,84 @@
+---
+title: Episodic vs semantic memory
+description: Two kinds of memory, two indexing strategies, and one API.
+---
+
+LedgerMem distinguishes between two kinds of memory because they have very
+different access patterns. The difference is not just naming — it changes how
+we chunk, embed, score, and decay.
+
+## The shapes
+
+| | Episodic | Semantic |
+| --- | --- | --- |
+| Example | "On 2026-04-01 the user asked me to schedule a meeting at 3pm." | "The user is the CTO of Acme Corp." |
+| Source | A specific event in time | A distilled fact |
+| Best key | Time + actor | Topic |
+| Decay | Aggressive — usually irrelevant after a few weeks | Slow — facts age out only when contradicted |
+| Dedupe | Rarely (events are unique) | Aggressively (same fact stated many ways) |
+
+## Storage
+
+You set the kind on `POST /v1/memories`:
+
+```json
+{
+  "content": "User asked me to schedule a meeting at 3pm on 2026-04-01.",
+  "kind": "episodic",
+  "metadata": { "user_id": "u_123", "happened_at": "2026-04-01T15:00:00Z" }
+}
+```
+
+```json
+{
+  "content": "User is the CTO of Acme Corp.",
+  "kind": "semantic",
+  "metadata": { "user_id": "u_123" }
+}
+```
+
+If you do not set `kind`, the server picks one for you using a small
+classifier. It is right ~95% of the time on agent traffic — fine for most
+use cases, but if you care about the difference (e.g. you want to manually
+expire old episodic memories), set it explicitly.
+
+## Retrieval
+
+The default `hybrid` strategy queries both indexes. You can scope a search
+to one kind:
+
+```json
+{ "query": "what did the user ask yesterday?", "kind": "episodic", "limit": 5 }
+```
+
+Episodic searches automatically apply a `recency-boost` decay so a memory
+from yesterday outranks a memory from six months ago at the same semantic
+similarity. The half-life is configurable per workspace; the default is 14
+days.
+
+## Distillation
+
+Sometimes you want to turn an episodic memory into a semantic one — for
+example, after the user has asked the same kind of question three weeks in
+a row, you want to remember "user usually asks about scheduling on Mondays"
+as a semantic fact.
+
+You can opt into automatic distillation:
+
+```bash
+curl -X PATCH https://api.proofly.dev/v1/workspaces/{id} \
+  -H "Authorization: Bearer $LEDGERMEM_ADMIN_KEY" \
+  -d '{ "auto_distill": { "enabled": true, "min_episodes": 3 } }'
+```
+
+The distiller runs nightly. It groups episodic memories by user + topic,
+asks an LLM to extract any stable facts, and writes those facts as new
+semantic memories with a backreference to the source episodes.
+
+## When this matters
+
+If you treat all memories as one undifferentiated bucket, you will be fine
+for prototypes. But once your agent is in production and the memory store
+is large, episodic memories drown out semantic ones in retrieval — old
+events outweigh durable facts simply because there are more of them. The
+two-bucket model fixes that.

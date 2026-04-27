@@ -1,0 +1,78 @@
+---
+title: Notion connector
+description: Sync Notion pages and databases into LedgerMem.
+---
+
+The Notion connector watches a workspace, a database, or a single page and
+keeps it mirrored in LedgerMem.
+
+## Install
+
+1. **Connectors -> Add new -> Notion**
+2. Choose **Connect to Notion**. The Notion OAuth screen will let you pick
+   exactly which pages or databases the connector can read.
+3. Pick a LedgerMem workspace.
+
+Within a minute the connector backfills the chosen surface and registers
+webhooks for live sync.
+
+## What gets ingested
+
+For each Notion page:
+
+- `content`: the page rendered as Markdown.
+- `metadata.notion_page_id`, `metadata.notion_url`.
+- `metadata.title`, `metadata.parent_database_id` (if applicable).
+- `metadata.last_edited_time`, `metadata.last_edited_by`.
+- For each database row: every property is stored as
+  `metadata.props.<name>`.
+
+Pages over 8000 tokens are auto-chunked into headed sections so that a
+search hits the most relevant section, not the whole page.
+
+## Search patterns
+
+```python
+# Search only inside the Engineering database:
+results = lm.search(
+    query="what is the runbook for a stuck job?",
+    filter={"source": "notion", "parent_database_id": "abc123"},
+    limit=5,
+)
+```
+
+```python
+# Get a specific page:
+page = lm.search(
+    query="postmortem for the 2026-04 incident",
+    filter={"source": "notion", "props.tag": "postmortem"},
+    limit=1,
+)
+```
+
+## Selective sync
+
+The connector defaults to syncing everything you authorized. To narrow
+further, set rules in **Connectors -> Notion -> Rules**:
+
+- **Allowlist a database**: only pages from that database sync.
+- **Block by property**: skip pages where `Status = Draft`.
+- **Skip by age**: ignore pages last edited more than N days ago.
+
+Rules are evaluated server-side at ingest time, so they save embedding
+budget.
+
+## Permissions
+
+The connector requests Notion's `read_content` and `read_user_with_email`
+scopes. It never requests write scopes — there is no path for it to
+modify your Notion workspace. The mapping from Notion users to LedgerMem
+metadata is by email; if you want stable IDs, configure
+`notion.user_id_strategy=notion_id` on the workspace.
+
+## Latency
+
+Notion's webhook fanout has ~5-30 seconds of replication delay between
+edit and webhook. After receiving a webhook, the connector takes another
+~3-15 seconds to embed and index the page. Plan for ~15 seconds of
+end-to-end lag for cache-staleness-sensitive callers.

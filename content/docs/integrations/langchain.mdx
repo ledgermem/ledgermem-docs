@@ -1,0 +1,94 @@
+---
+title: LangChain
+description: Use LedgerMem as the memory backend for LangChain chains and agents.
+---
+
+The `langchain-ledgermem` package implements LangChain's `BaseChatMessageHistory`,
+`BaseMemory`, and `BaseRetriever` interfaces, so LedgerMem drops into any
+existing LangChain pipeline.
+
+## Install
+
+```bash
+pip install langchain-ledgermem
+```
+
+## Chat history
+
+```python
+from langchain_ledgermem import LedgerMemChatMessageHistory
+from langchain_core.messages import HumanMessage, AIMessage
+
+history = LedgerMemChatMessageHistory(
+    session_id="user-42-conversation-1",
+)
+
+history.add_user_message("My favorite color is blue.")
+history.add_ai_message("Got it — I'll remember.")
+
+# Later, in another process:
+history = LedgerMemChatMessageHistory(session_id="user-42-conversation-1")
+print(history.messages)
+```
+
+The `session_id` becomes a metadata filter on the workspace, so you can
+have many concurrent conversations in one LedgerMem workspace without any
+cross-talk.
+
+## Conversational memory
+
+```python
+from langchain.chains import ConversationChain
+from langchain_openai import ChatOpenAI
+from langchain_ledgermem import LedgerMemMemory
+
+memory = LedgerMemMemory(
+    user_id="u_123",
+    return_messages=True,
+)
+
+chain = ConversationChain(
+    llm=ChatOpenAI(model="gpt-4o-mini"),
+    memory=memory,
+)
+
+print(chain.invoke({"input": "What did I tell you about my favorite color?"}))
+```
+
+`LedgerMemMemory` searches the workspace for relevant prior memories and
+injects them into the prompt under the `history` variable, identical to how
+`ConversationBufferMemory` works — except the underlying store is durable
+and shared across processes.
+
+## Retriever
+
+```python
+from langchain_ledgermem import LedgerMemRetriever
+
+retriever = LedgerMemRetriever(
+    workspace_id="ws_...",
+    search_kwargs={"limit": 5, "strategy": "rerank"},
+)
+
+docs = retriever.invoke("what are the project deadlines?")
+```
+
+The retriever returns LangChain `Document` objects with `page_content` set
+to the memory content and `metadata` set to the memory metadata, so it
+plugs into `RetrievalQA`, `MultiQueryRetriever`, and `ContextualCompression`
+without modification.
+
+## LangSmith tracing
+
+The integration emits LangSmith trace events for every LedgerMem call.
+Spans carry the request ID, the strategy, and the per-stage latency
+breakdown, so you can attribute slowness in your chain to retrieval vs
+generation at a glance.
+
+## Patterns
+
+- For RAG, use `LedgerMemRetriever` and let LedgerMem own retrieval.
+- For agent state, use `LedgerMemMemory` so the agent's recollection of the
+  user persists across sessions.
+- For workflow checkpoints, use the LangGraph integration instead — see
+  [LangGraph](/docs/integrations/langgraph).

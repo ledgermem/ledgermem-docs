@@ -1,0 +1,111 @@
+---
+title: Rust SDK
+description: Async Rust client for LedgerMem.
+---
+
+The Rust SDK is built on `reqwest`, `serde`, and `tokio`. It is the
+canonical client for high-throughput, low-latency callers (e.g. embedding
+LedgerMem inside another agent runtime).
+
+- crates.io: [`ledgermem`](https://crates.io/crates/ledgermem)
+- GitHub: [`ledgermem/ledgermem-rust`](https://github.com/ledgermem/ledgermem-rust)
+- MSRV: 1.80
+
+## Install
+
+```toml
+[dependencies]
+ledgermem = "0.1"
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+```
+
+## Configure
+
+```rust
+use ledgermem::{ClientBuilder, ClientConfig};
+
+#[tokio::main]
+async fn main() -> anyhow::Result<()> {
+    let client = ClientBuilder::new()
+        .api_key(std::env::var("LEDGERMEM_API_KEY")?)
+        .workspace_id(std::env::var("LEDGERMEM_WORKSPACE_ID")?)
+        .timeout(std::time::Duration::from_secs(30))
+        .build()?;
+
+    Ok(())
+}
+```
+
+## Memories
+
+```rust
+use ledgermem::types::{CreateMemory, Kind, Memory};
+
+let memory: Memory = client
+    .memories()
+    .create(CreateMemory {
+        content: "User prefers dark mode.".into(),
+        metadata: serde_json::json!({ "user_id": "u_123" }),
+        kind: Some(Kind::Semantic),
+        ..Default::default()
+    })
+    .await?;
+
+let fetched = client.memories().get(&memory.id).await?;
+client.memories().delete(&memory.id).await?;
+```
+
+## Search
+
+```rust
+use ledgermem::types::{SearchRequest, SearchStrategy};
+
+let results = client
+    .search(SearchRequest {
+        query: "what does the user like?".into(),
+        limit: 5,
+        strategy: SearchStrategy::Rerank,
+        filter: Some(serde_json::json!({ "user_id": "u_123" })),
+        ..Default::default()
+    })
+    .await?;
+
+for hit in results.results {
+    println!("{:.3}  {}", hit.score, hit.content);
+}
+```
+
+## Streaming
+
+```rust
+use futures_util::StreamExt;
+
+let mut stream = client.search_stream("what did we decide?", 200);
+while let Some(hit) = stream.next().await {
+    let hit = hit?;
+    println!("{}  {:.3}", hit.id, hit.score);
+}
+```
+
+## Errors
+
+The crate's `Error` is a strongly typed enum with one variant per error
+class. Handle the variants you care about, propagate the rest:
+
+```rust
+use ledgermem::Error;
+
+match client.memories().get("mem_does_not_exist").await {
+    Ok(_) => unreachable!(),
+    Err(Error::NotFound { request_id, .. }) => {
+        eprintln!("not found, request_id={}", request_id);
+    }
+    Err(other) => return Err(other.into()),
+}
+```
+
+## Tracing
+
+The client emits `tracing` spans for every HTTP request. Pair it with
+`tracing-subscriber` to see structured logs out of the box, or with
+`opentelemetry` for export to your collector.

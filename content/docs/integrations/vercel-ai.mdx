@@ -1,0 +1,97 @@
+---
+title: Vercel AI SDK
+description: Use LedgerMem inside Vercel AI SDK chat handlers and tools.
+---
+
+`@ledgermem/ai-sdk` adds a memory provider to the Vercel AI SDK that gives
+your AI route durable memory across deployments and edge regions.
+
+## Install
+
+```bash
+npm install @ledgermem/ai-sdk ai ledgermem
+```
+
+## Edge-friendly memory
+
+```ts
+import { generateText, tool } from "ai";
+import { openai } from "@ai-sdk/openai";
+import { z } from "zod";
+import { createLedgerMemMemory } from "@ledgermem/ai-sdk";
+
+const memory = createLedgerMemMemory({
+  apiKey: process.env.LEDGERMEM_API_KEY!,
+  workspaceId: process.env.LEDGERMEM_WORKSPACE_ID!,
+});
+
+export async function POST(req: Request) {
+  const { messages, userId } = await req.json();
+
+  // Recall: prepend top-5 relevant memories as system context.
+  const recalled = await memory.recall({
+    userId,
+    query: messages[messages.length - 1].content,
+    limit: 5,
+  });
+
+  const { text } = await generateText({
+    model: openai("gpt-4o-mini"),
+    system: `Long-term memory:\n${recalled.map((m) => `- ${m.content}`).join("\n")}`,
+    messages,
+    tools: {
+      remember: memory.rememberTool({ userId }),
+    },
+  });
+
+  return Response.json({ text });
+}
+```
+
+## React hooks
+
+For client-side chat UIs, use the `useChatMemory` hook:
+
+```tsx
+"use client";
+
+import { useChat } from "ai/react";
+import { useChatMemory } from "@ledgermem/ai-sdk/react";
+
+export function Chat({ userId }: { userId: string }) {
+  const { messages, input, handleInputChange, handleSubmit } = useChat();
+  const { memories, isLoading } = useChatMemory({ userId, query: input });
+
+  return (
+    <div>
+      <aside>
+        <h3>Recalled</h3>
+        {isLoading ? <p>Loading...</p> : memories.map((m) => (
+          <p key={m.id}>{m.content}</p>
+        ))}
+      </aside>
+      <form onSubmit={handleSubmit}>
+        <input value={input} onChange={handleInputChange} />
+      </form>
+    </div>
+  );
+}
+```
+
+## Streaming
+
+Memory recall completes before generation begins (~50 ms), so it does not
+delay the first token. Writes happen after the stream closes, in the
+background.
+
+## Multi-tenant SaaS
+
+For a SaaS app, use one workspace per tenant and put `tenantId` in the
+session. The provider handles workspace selection automatically:
+
+```ts
+const memory = createLedgerMemMemory({
+  apiKey: process.env.LEDGERMEM_API_KEY!,
+  workspaceResolver: async ({ session }) => session.tenantWorkspaceId,
+});
+```

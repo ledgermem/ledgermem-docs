@@ -1,0 +1,118 @@
+---
+title: Quickstart
+description: Five minutes from zero to your first stored memory.
+---
+
+This page walks you through your first interaction with LedgerMem in any of
+the supported languages. By the end you will have:
+
+1. Created a workspace and an API key.
+2. Stored two memories.
+3. Searched and retrieved them with hybrid (vector + keyword) ranking.
+
+## 1. Create a workspace
+
+Sign in at [app.proofly.dev](https://app.proofly.dev) and click **New
+workspace**. Pick a name (`acme-prod` is fine), then open the **API keys**
+panel and create a key. Save the key value somewhere private — we only show
+it once.
+
+You will need two things on every request:
+
+- `Authorization: Bearer <your_api_key>`
+- `x-workspace-id: <workspace_id>`
+
+## 2. Store your first memory
+
+### TypeScript
+
+```ts
+import { LedgerMem } from "ledgermem";
+
+const lm = new LedgerMem({
+  apiKey: process.env.LEDGERMEM_API_KEY!,
+  workspaceId: process.env.LEDGERMEM_WORKSPACE_ID!,
+});
+
+await lm.memories.create({
+  content: "User prefers dark mode and uses VS Code.",
+  metadata: { user_id: "u_123", source: "onboarding" },
+});
+
+await lm.memories.create({
+  content: "User is allergic to peanuts and shellfish.",
+  metadata: { user_id: "u_123", source: "profile" },
+});
+```
+
+### Python
+
+```python
+from ledgermem import LedgerMem
+
+lm = LedgerMem()  # picks up env vars automatically
+
+lm.memories.create(
+    content="User prefers dark mode and uses VS Code.",
+    metadata={"user_id": "u_123", "source": "onboarding"},
+)
+
+lm.memories.create(
+    content="User is allergic to peanuts and shellfish.",
+    metadata={"user_id": "u_123", "source": "profile"},
+)
+```
+
+### curl
+
+```bash
+curl -X POST https://api.proofly.dev/v1/memories \
+  -H "Authorization: Bearer $LEDGERMEM_API_KEY" \
+  -H "x-workspace-id: $LEDGERMEM_WORKSPACE_ID" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "content": "User prefers dark mode and uses VS Code.",
+    "metadata": { "user_id": "u_123", "source": "onboarding" }
+  }'
+```
+
+## 3. Search
+
+### TypeScript
+
+```ts
+const hits = await lm.search({
+  query: "what does the user like in their editor?",
+  limit: 5,
+});
+console.log(hits.results.map((h) => h.content));
+```
+
+### Python
+
+```python
+hits = lm.search(query="what does the user like in their editor?", limit=5)
+for hit in hits.results:
+    print(hit.content)
+```
+
+### curl
+
+```bash
+curl -X POST https://api.proofly.dev/v1/search \
+  -H "Authorization: Bearer $LEDGERMEM_API_KEY" \
+  -H "x-workspace-id: $LEDGERMEM_WORKSPACE_ID" \
+  -H "Content-Type: application/json" \
+  -d '{ "query": "what does the user like in their editor?", "limit": 5 }'
+```
+
+The response includes a `results` array sorted by score, where each result has
+`id`, `content`, `score`, and the `metadata` you stored.
+
+## What's next
+
+- Read [Concepts > Memory](/docs/concepts/memory) to understand the data model.
+- Plug LedgerMem into your agent framework via [Integrations](/docs/integrations/langchain).
+- Tune the retrieval pipeline at [Retrieval](/docs/retrieval).
+- Set up [MCP](/docs/mcp/claude-desktop) so Claude Desktop can read and write
+  memories directly.

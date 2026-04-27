@@ -1,0 +1,93 @@
+---
+title: Cline
+description: Wire LedgerMem into Cline (the open-source VS Code agent) via MCP.
+---
+
+[Cline](https://github.com/cline/cline) is a popular open-source coding
+agent extension for VS Code. It supports the Model Context Protocol so
+you can plug LedgerMem in as an extra tool.
+
+## Install
+
+1. Install the MCP server:
+   ```bash
+   npm install -g @ledgermem/mcp
+   ```
+
+2. Open Cline's settings in VS Code (**Cmd+Shift+P -> Cline: Open
+   Settings**).
+
+3. Find the **MCP Servers** section. Click **Add server** and paste:
+   ```json
+   {
+     "ledgermem": {
+       "command": "ledgermem-mcp",
+       "args": [],
+       "env": {
+         "LEDGERMEM_API_KEY": "lm_live_...",
+         "LEDGERMEM_WORKSPACE_ID": "ws_..."
+       }
+     }
+   }
+   ```
+
+4. Save. Cline restarts the MCP processes automatically.
+
+## Tool palette
+
+Cline now lists three new tools in its tool picker:
+
+- `ledgermem.recall` — semantic search across your workspace.
+- `ledgermem.remember` — write a new memory.
+- `ledgermem.forget` — soft-delete by ID.
+
+You can disable any of them per-server from Cline's settings UI.
+
+## Recommended `clinerules`
+
+Add to your project's `.clinerules`:
+
+```
+Whenever the user asks "what did we decide about X" or "remind me how Y
+works", call ledgermem.recall first. If the recalled memories are
+sufficient, cite them and skip independent generation.
+
+When ending a multi-turn task, summarize the decisions made and call
+ledgermem.remember with the summary, tagging metadata.source="cline" and
+metadata.repo=<workspace folder name>.
+```
+
+## Cline + Plan/Act mode
+
+Cline has an explicit Plan mode. The plan step is a great place for the
+agent to call `recall` — it surfaces prior context before any code is
+generated. If you find Cline forgetting to use memory, add an explicit
+"call ledgermem.recall first" line to the plan template.
+
+## Per-project workspaces
+
+Cline reloads MCP config when you switch VS Code workspaces. To run a
+different LedgerMem workspace per project, write a small wrapper script
+that picks the right env vars based on the current `PWD`:
+
+```bash
+#!/usr/bin/env bash
+case "$PWD" in
+  *helios*) export LEDGERMEM_WORKSPACE_ID=ws_helios_... ;;
+  *polaris*) export LEDGERMEM_WORKSPACE_ID=ws_polaris_... ;;
+  *) export LEDGERMEM_WORKSPACE_ID=ws_default_... ;;
+esac
+exec ledgermem-mcp "$@"
+```
+
+Point `command` at this script.
+
+## Troubleshooting
+
+- **Tools call but return errors**: open Cline's MCP log
+  (**Cline: Show MCP Logs**). Most issues are auth — confirm the API
+  key has the `read` (and `write` if you use `remember`) scope.
+- **Cline says "no memories found"**: the workspace really is empty for
+  that query, or your filter is too narrow. Try the
+  [playground](https://play.proofly.dev) with the same query and
+  workspace to confirm.

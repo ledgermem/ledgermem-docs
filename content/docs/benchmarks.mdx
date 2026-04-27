@@ -1,0 +1,74 @@
+---
+title: Benchmarks
+description: How LedgerMem performs on public memory benchmarks.
+---
+
+We publish benchmark numbers because we want them held to a standard. The
+[ledgermem-eval](https://github.com/ledgermem/ledgermem-eval) repo contains
+the harness, the fixtures, and the leaderboard. Every number on
+[eval.proofly.dev](https://eval.proofly.dev) is reproducible from a single
+`docker run`.
+
+## Suites we run
+
+- **LongMemEval** — long-context multi-session memory recall.
+- **LoCoMo** — conversational memory benchmark.
+- **RealAgentMem** — our own suite focused on real-agent task continuity.
+
+## Methodology in two paragraphs
+
+Every benchmark uses the same five metrics: recall@5, precision@5, F1,
+p50 latency, and p95 latency. The harness drives each system through the
+exact same load script, runs every system in the same VM with the same
+network conditions, and records latency including round-trip time. We do
+not strip the network: a system hosted in another region pays the
+same penalty everywhere.
+
+We do not let any system's authors tune the harness. PRs that touch the
+scoring code or the fixtures require a review from someone who is not a
+maintainer of any benchmarked system. The full ruleset is in the
+harness's [methodology page](https://eval.proofly.dev/methodology).
+
+## Cadence
+
+The leaderboard is regenerated every quarter from the latest stable
+release of every system. You can also trigger a fresh run yourself
+with the harness's `--workflow_dispatch` action.
+
+## Submitting your system
+
+If you maintain a memory system, open a PR adding an adapter under
+`src/ledgermem_eval/adapters/` and provide a free-tier or trial key
+the cron job can use. The quarterly cron will start including your
+system automatically.
+
+## Why we publish this
+
+We have two reasons:
+
+1. **Honesty.** Memory systems are easy to evaluate badly. By publishing
+   the harness, we make it cheap for anyone to refute or reproduce our
+   numbers. That keeps us honest.
+2. **Direction.** Public numbers are how we decide which retrieval
+   tweaks to ship next. RealAgentMem in particular is what we use to
+   prioritize internal investments — if it does not move the
+   benchmark, we do not ship it.
+
+## What we learn from each benchmark
+
+- **LongMemEval** rewards systems that handle long, sparse memory stores
+  with infrequent retrieval. Recall is the dominant signal here.
+- **LoCoMo** rewards systems that handle conversational state and
+  cross-session recall. Latency matters because real chat agents reuse
+  the result on every turn.
+- **RealAgentMem** is our internal "what does production look like"
+  benchmark. It rewards both recall and stable behavior under
+  contradictory facts (where the latest fact should win).
+
+## Comparing apples to apples
+
+When you compare LedgerMem to another system, make sure you are using
+the same retrieval depth (`limit`), the same model where applicable
+(rerankers, embedding models), and the same network path. The harness
+controls for all of these — outside the harness, it is easy to
+accidentally compare a managed cloud service to a localhost benchmark.

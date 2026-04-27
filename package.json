@@ -1,0 +1,30 @@
+{
+  "name": "ledgermem-docs",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "typecheck": "tsc --noEmit",
+    "postinstall": "fumadocs-mdx"
+  },
+  "dependencies": {
+    "fumadocs-core": "14.5.4",
+    "fumadocs-mdx": "11.1.2",
+    "fumadocs-openapi": "5.5.10",
+    "fumadocs-ui": "14.5.4",
+    "next": "15.0.3",
+    "react": "19.0.0",
+    "react-dom": "19.0.0"
+  },
+  "devDependencies": {
+    "@types/mdx": "2.0.13",
+    "@types/node": "22.9.0",
+    "@types/react": "19.0.0",
+    "@types/react-dom": "19.0.0",
+    "typescript": "5.6.3"
+  }
+}

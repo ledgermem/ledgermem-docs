@@ -1,0 +1,74 @@
+---
+title: Discord connector
+description: Sync Discord server messages into LedgerMem.
+---
+
+The Discord connector ingests messages from a Discord server (guild) into a
+LedgerMem workspace. It is functionally similar to the Slack connector but
+respects Discord-specific quirks around threads, forums, and stage channels.
+
+## Install
+
+1. **Connectors -> Add new -> Discord**
+2. **Authorize bot** opens the Discord OAuth flow. Choose the server you
+   want to connect.
+3. Pick channels (defaults to all text channels you have read access to).
+4. Pick a LedgerMem workspace.
+
+The bot starts ingesting within a minute. Backfill respects Discord's
+per-channel rate limit of 50 reads/sec.
+
+## What gets ingested
+
+| Source | Stored as |
+| --- | --- |
+| Text channel message | `metadata.channel_type=text` |
+| Thread message | `metadata.channel_type=thread`, `metadata.parent_id` |
+| Forum post | `metadata.channel_type=forum`, `metadata.tags=[...]` |
+| Reactions | `metadata.reactions={emoji: count}` |
+| Replies | `metadata.referenced_message_id` |
+
+Stage channel transcripts are not ingested.
+
+## Search patterns
+
+```python
+# Find what was discussed in #support last week:
+from datetime import datetime, timedelta, timezone
+
+results = lm.search(
+    query="how do users want us to fix login?",
+    filter={
+        "source": "discord",
+        "channel_name": "support",
+        "posted_at": {"$gte": (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()},
+    },
+    limit=10,
+)
+```
+
+```python
+# Get every message in a forum post:
+def get_forum_post(post_id: str):
+    return list(lm.memories.list(filter={
+        "source": "discord",
+        "channel_type": "forum",
+        "parent_id": post_id,
+    }))
+```
+
+## Permissions
+
+The bot needs the `View Channels`, `Read Message History`, and (for forum
+ingestion) `Read Threads` permissions. It never needs `Send Messages` —
+it only reads.
+
+If you want a two-way bot that can post replies, install the
+[Discord bot](https://github.com/ledgermem/ledgermem-discord-bot)
+separately; it shares the same workspace but uses a different bot token.
+
+## Compliance
+
+By default, messages from users who have left the server are auto-archived
+30 days after their departure. Set `discord.retain_departed=true` on the
+workspace to disable.

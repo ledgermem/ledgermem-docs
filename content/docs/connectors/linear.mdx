@@ -1,0 +1,75 @@
+---
+title: Linear connector
+description: Sync Linear issues, projects, and cycles into LedgerMem.
+---
+
+The Linear connector keeps a Linear team or workspace mirrored in
+LedgerMem. It is the easiest way to give a planning, support, or
+project-management agent visibility into your active work.
+
+## Install
+
+1. **Connectors -> Add new -> Linear**
+2. **Connect Linear** opens the OAuth flow. Choose the workspace.
+3. Pick the teams to sync (default: all).
+4. Pick a LedgerMem workspace.
+
+Backfill starts within a minute. Linear's webhooks deliver updates within
+seconds.
+
+## What gets ingested
+
+For each issue:
+
+- `content`: title + body + comments concatenated.
+- `metadata.linear_id`, `metadata.linear_url`.
+- `metadata.team_id`, `metadata.team_name`.
+- `metadata.project_id`, `metadata.cycle_id`.
+- `metadata.state`: e.g. `triage`, `backlog`, `in_progress`, `done`, `canceled`.
+- `metadata.priority`: 0-4.
+- `metadata.labels`: list of label names.
+- `metadata.assignee_email`, `metadata.creator_email`.
+- `metadata.created_at`, `metadata.updated_at`, `metadata.completed_at`.
+
+For each project:
+
+- `content`: project description.
+- `metadata.kind=project`, `metadata.target_date`, `metadata.lead_email`.
+
+## Search patterns
+
+```python
+# Find all issues blocking the current cycle:
+results = lm.search(
+    query="cycle blockers",
+    filter={
+        "source": "linear",
+        "cycle_id": current_cycle_id,
+        "state": {"$in": ["in_progress", "blocked"]},
+    },
+    limit=20,
+)
+```
+
+```python
+# Recall prior similar bug reports:
+results = lm.search(
+    query="user can't reset password from mobile",
+    filter={"source": "linear", "labels": "bug"},
+    limit=5,
+)
+```
+
+## Two-way?
+
+The connector is read-only by default. To let your agent create or update
+Linear issues, install the
+[Linear app](https://github.com/ledgermem/ledgermem-linear) — it shares
+the same workspace but uses a write-scoped token.
+
+## Compliance
+
+Comments from users who have left the workspace are not ingested. If you
+need a complete audit trail, enable **export to S3** under
+**Connectors -> Linear -> Settings**; the connector will additionally
+write a JSONL line to your S3 bucket per ingested change.

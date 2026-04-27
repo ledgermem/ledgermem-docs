@@ -1,0 +1,42 @@
+---
+title: Welcome to LedgerMem
+description: Long-term memory for LLM agents — managed, multi-tenant, and fast.
+---
+
+LedgerMem is a managed memory layer for AI agents. It gives your agent a place
+to write down what it learns, and an indexed, low-latency way to look it up
+later — across sessions, users, and workspaces.
+
+## What you get
+
+- A **REST API** at `https://api.proofly.dev` for storing and searching
+  memories. Bearer auth, per-workspace isolation, and a single `x-workspace-id`
+  header is all you need to scope every call.
+- **Hybrid retrieval** out of the box: dense vectors plus BM25, fused with
+  Reciprocal Rank Fusion. You do not have to pick a strategy — we do, and we
+  let you override it per-query if you must.
+- **First-class clients in eight languages** — TypeScript, Python, Go, Rust,
+  Java, C#, Ruby, and PHP — plus an MCP server that drops into Claude Desktop,
+  Cursor, Windsurf, and Cline.
+- **Connectors** that ingest from your existing tools (Slack, Discord,
+  Notion, Obsidian, Google Drive, GitHub, Linear) so your agent's memory is
+  pre-populated with the context that already lives elsewhere.
+- A **playground** at [play.proofly.dev](https://play.proofly.dev) where you
+  can try every retrieval strategy side-by-side without writing any code.
+
+## Where to start
+
+- New here? Run the [quickstart](/docs/quickstart) — five minutes from zero
+  to your first stored memory.
+- Building an agent? Read the [concepts](/docs/concepts/memory) section first,
+  then jump to your [SDK](/docs/sdks/typescript).
+- Already on Mem0, Zep, or another memory layer? See the
+  [migration guide](/docs/migrations).
+- Curious how we score? Read about [retrieval](/docs/retrieval) and the
+  [benchmarks](/docs/benchmarks) we use.
+
+## Status
+
+LedgerMem is in public beta. The REST API is stable; the OpenAPI contract in
+this repo is the source of truth and is generated from the same proto file as
+the server. Breaking changes get a 90-day deprecation window.

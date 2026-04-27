@@ -1,0 +1,123 @@
+---
+title: Self-hosting
+description: Run LedgerMem in your own infrastructure.
+---
+
+LedgerMem ships a self-hostable distribution as a set of OCI images plus a
+Helm chart. Self-hosting gives you data-residency control, custom
+embedding endpoints, and the ability to run on air-gapped networks.
+
+## Components
+
+A self-hosted LedgerMem cluster consists of:
+
+| Component | Image | Purpose |
+| --- | --- | --- |
+| `api` | `ghcr.io/ledgermem/api:0.1.0` | Stateless HTTP frontend. |
+| `worker` | `ghcr.io/ledgermem/worker:0.1.0` | Embedding, reranking, distillation. |
+| `pgbouncer` | `ghcr.io/ledgermem/pgbouncer:0.1.0` | Pooled PostgreSQL connections. |
+| `migrate` | `ghcr.io/ledgermem/migrate:0.1.0` | Runs DB migrations on deploy. |
+
+External dependencies you provide:
+
+- **PostgreSQL 16** with the `pgvector` and `pg_trgm` extensions.
+- **Redis 7** for caching and async work queues.
+- **An object store** (S3, R2, GCS) for original document blobs.
+
+## Helm
+
+```bash
+helm repo add ledgermem https://ledgermem.github.io/helm-charts
+helm repo update
+
+helm install ledgermem ledgermem/ledgermem \
+  --namespace ledgermem --create-namespace \
+  --values values.yaml
+```
+
+Minimal `values.yaml`:
+
+```yaml
+postgresql:
+  host: pg.internal
+  port: 5432
+  database: ledgermem
+  user: ledgermem
+  passwordSecretRef: { name: ledgermem-pg, key: password }
+
+redis:
+  url: redis://redis.internal:6379/0
+
+embeddings:
+  provider: openai
+  apiKeySecretRef: { name: ledgermem-openai, key: api_key }
+  model: text-embedding-3-large
+
+api:
+  replicas: 3
+  resources:
+    requests: { cpu: 500m, memory: 1Gi }
+    limits:   { cpu: 2,    memory: 4Gi }
+
+worker:
+  replicas: 4
+  rerank:
+    enabled: true
+    device: cpu
+```
+
+## Sizing
+
+Rough starting points (single region):
+
+| Memories | API replicas | Worker replicas | DB |
+| --- | --- | --- | --- |
+| < 100k | 1 | 1 | db.t4g.medium |
+| < 1M | 2 | 2 | db.r6g.large |
+| < 10M | 3 | 4 | db.r6g.xlarge |
+| < 100M | 6 | 8 | db.r6g.4xlarge |
+| > 100M | Talk to us | | (sharded) |
+
+For workloads with heavy rerank traffic, give workers a GPU; CPU rerank
+is usable but adds 80-150 ms vs ~30 ms on a small GPU.
+
+## Embeddings
+
+You can use:
+
+- **OpenAI** (`embeddings.provider: openai`).
+- **Voyage AI** (`embeddings.provider: voyage`).
+- **Cohere** (`embeddings.provider: cohere`).
+- **Bring-your-own** OpenAI-compatible endpoint
+  (`embeddings.provider: openai-compatible`).
+- **Local** via `text-embeddings-inference` running in-cluster.
+
+Switching providers triggers a re-embed job; do this on a maintenance
+window unless your store is small.
+
+## Migrations
+
+`helm upgrade` runs the `migrate` job automatically. Migrations are
+backward-compatible across one minor version, so a rolling upgrade is
+safe. We never make destructive schema changes within a major version
+without an explicit two-step path.
+
+## Observability
+
+The API and worker emit:
+
+- Prometheus metrics on `:9090/metrics`.
+- OpenTelemetry traces (configure `otel.endpoint`).
+- Structured JSON logs on stdout.
+
+Grafana dashboards live at
+[`grafana-dashboards/`](https://github.com/ledgermem/ledgermem-helm-charts/tree/main/grafana).
+
+## Backup and restore
+
+Treat the PostgreSQL database as the single source of truth. The HNSW
+index can be rebuilt from the embeddings column, and the embeddings
+themselves can be regenerated from `content` (slowly).
+
+We recommend `pgBackRest` with daily full + 15-minute WAL archives
+shipped to your object store.

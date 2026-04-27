@@ -1,0 +1,89 @@
+---
+title: API reference
+description: Auto-generated reference for the LedgerMem REST API.
+---
+
+The LedgerMem REST API is described by an OpenAPI 3.1 contract that lives
+at [`/openapi.yaml`](/openapi.yaml). The reference below is rendered from
+that file at build time using Fumadocs OpenAPI.
+
+## Base URL
+
+```
+https://api.proofly.dev
+```
+
+Self-hosted deployments swap this with their own host. All endpoints are
+versioned under `/v1`.
+
+## Authentication
+
+Every request must carry two headers:
+
+- `Authorization: Bearer <api_key>` — the API key from your dashboard.
+- `x-workspace-id: <workspace_id>` — the workspace this request acts on.
+
+Requests missing either header return `401 Unauthorized`.
+
+## Endpoints
+
+| Method | Path | Description |
+| --- | --- | --- |
+| `POST` | `/v1/search` | Search a workspace for memories. |
+| `POST` | `/v1/memories` | Create a memory. |
+| `GET` | `/v1/memories` | List memories with optional filters. |
+| `GET` | `/v1/memories/{id}` | Fetch one memory by ID. |
+| `PATCH` | `/v1/memories/{id}` | Update content or metadata. |
+| `DELETE` | `/v1/memories/{id}` | Soft-delete (or hard-delete with `?hard=true`). |
+| `POST` | `/v1/conversations` | Create a conversation thread. |
+| `POST` | `/v1/conversations/{id}/messages` | Append a message to a thread. |
+| `GET` | `/v1/workspaces/{id}` | Fetch workspace settings. |
+| `PATCH` | `/v1/workspaces/{id}` | Update workspace settings. |
+
+## Errors
+
+Every error response uses this shape:
+
+```json
+{
+  "error": {
+    "code": "memory_not_found",
+    "message": "No memory exists with the requested ID in this workspace.",
+    "request_id": "req_01H..."
+  }
+}
+```
+
+Common codes:
+
+| Code | HTTP | Meaning |
+| --- | --- | --- |
+| `unauthenticated` | 401 | Missing or invalid `Authorization` header. |
+| `forbidden` | 403 | Key does not have the required role. |
+| `workspace_not_found` | 404 | Workspace ID does not exist or is not accessible. |
+| `memory_not_found` | 404 | Memory ID does not exist in the workspace. |
+| `validation_failed` | 422 | Request body failed schema validation. |
+| `rate_limited` | 429 | Per-workspace QPS limit hit; respect `Retry-After`. |
+| `internal_error` | 500 | Something went wrong on our side; safe to retry with backoff. |
+
+## Rate limits
+
+The default per-workspace limit is 100 QPS for search and 50 QPS for
+writes. Limits scale automatically with your plan. The `X-RateLimit-*`
+headers on every response tell you where you stand.
+
+## Pagination
+
+List endpoints use cursor-based pagination:
+
+```
+GET /v1/memories?limit=50&cursor=eyJ...
+```
+
+The response includes a `next_cursor` field (or `null` if you have
+reached the end). Cursors are opaque — do not parse them.
+
+## OpenAPI
+
+The full contract is at [`/openapi.yaml`](/openapi.yaml). It is
+machine-readable and used to generate every SDK.

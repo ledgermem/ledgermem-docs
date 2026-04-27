@@ -1,0 +1,111 @@
+---
+title: PHP SDK
+description: PHP 8.2+ client for LedgerMem.
+---
+
+The PHP SDK is a PSR-18 / PSR-17 friendly client. It works with any HTTP
+client you already have (Guzzle, Symfony HttpClient, Buzz) and ships with a
+sensible default if you do not pass one.
+
+- Packagist: `ledgermem/ledgermem`
+- GitHub: [`ledgermem/ledgermem-php`](https://github.com/ledgermem/ledgermem-php)
+- PHP: 8.2+
+
+## Install
+
+```bash
+composer require ledgermem/ledgermem
+```
+
+## Configure
+
+```php
+<?php
+
+use LedgerMem\Client;
+
+$client = Client::create([
+    'api_key'      => getenv('LEDGERMEM_API_KEY'),
+    'workspace_id' => getenv('LEDGERMEM_WORKSPACE_ID'),
+    'timeout'      => 30,
+]);
+```
+
+## Memories
+
+```php
+use LedgerMem\Models\CreateMemoryRequest;
+use LedgerMem\Enums\MemoryKind;
+
+$memory = $client->memories()->create(new CreateMemoryRequest(
+    content: 'User prefers dark mode.',
+    metadata: ['user_id' => 'u_123'],
+    kind: MemoryKind::SEMANTIC,
+));
+
+$fetched = $client->memories()->get($memory->id);
+$client->memories()->delete($memory->id);
+```
+
+## Search
+
+```php
+use LedgerMem\Models\SearchRequest;
+use LedgerMem\Enums\SearchStrategy;
+
+$response = $client->search(new SearchRequest(
+    query: 'what does the user like?',
+    limit: 5,
+    strategy: SearchStrategy::RERANK,
+    filter: ['user_id' => 'u_123'],
+));
+
+foreach ($response->results as $hit) {
+    printf("%.3f  %s\n", $hit->score, $hit->content);
+}
+```
+
+## Laravel integration
+
+A first-party Laravel package adds config publishing, a facade, and queue
+helpers:
+
+```bash
+composer require ledgermem/ledgermem-laravel
+php artisan vendor:publish --tag=ledgermem-config
+```
+
+```php
+use LedgerMem\Laravel\Facades\LedgerMem;
+
+$results = LedgerMem::search([
+    'query' => 'what does the user like?',
+    'limit' => 5,
+]);
+```
+
+## Errors
+
+```php
+use LedgerMem\Exceptions\LedgerMemException;
+use LedgerMem\Exceptions\NotFoundException;
+
+try {
+    $client->memories()->get('mem_does_not_exist');
+} catch (NotFoundException $exc) {
+    echo "not found: {$exc->requestId}\n";
+} catch (LedgerMemException $exc) {
+    echo "api error: {$exc->statusCode} {$exc->getMessage()}\n";
+}
+```
+
+## Symfony integration
+
+The package ships a Symfony bundle for typed config and DI registration:
+
+```yaml
+# config/packages/ledgermem.yaml
+ledgermem:
+  api_key: '%env(LEDGERMEM_API_KEY)%'
+  workspace_id: '%env(LEDGERMEM_WORKSPACE_ID)%'
+```

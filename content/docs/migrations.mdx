@@ -1,0 +1,110 @@
+---
+title: Migrations
+description: Move from Mem0, Zep, OpenAI Assistants, or a hand-rolled vector DB to LedgerMem.
+---
+
+This page collects the practical steps for moving an existing memory store
+into LedgerMem without losing data.
+
+## From Mem0
+
+`ledgermem-migrate` ships a Mem0 importer:
+
+```bash
+pip install ledgermem-migrate
+
+ledgermem-migrate from-mem0 \
+  --mem0-api-key "$MEM0_API_KEY" \
+  --mem0-user-id "u_123" \
+  --target-workspace ws_... \
+  --target-api-key "$LEDGERMEM_API_KEY"
+```
+
+What it does:
+
+- Pulls every memory for the given Mem0 user(s).
+- Maps Mem0's per-user namespace to LedgerMem's `metadata.user_id`.
+- Preserves Mem0's metadata under `metadata.mem0_*` keys.
+- Sets `kind="semantic"` (Mem0's default behavior).
+
+## From Zep
+
+```bash
+ledgermem-migrate from-zep \
+  --zep-api-key "$ZEP_API_KEY" \
+  --zep-session-ids u_123,u_456 \
+  --target-workspace ws_... \
+  --target-api-key "$LEDGERMEM_API_KEY"
+```
+
+The importer translates Zep's session-scoped messages into episodic
+memories tagged with `metadata.session_id`. Zep's "summary" field, if
+present, becomes a separate semantic memory tagged
+`metadata.zep_summary=true`.
+
+## From OpenAI Assistants
+
+```bash
+ledgermem-migrate from-openai-assistants \
+  --openai-api-key "$OPENAI_API_KEY" \
+  --thread-ids thread_abc,thread_def \
+  --target-workspace ws_... \
+  --target-api-key "$LEDGERMEM_API_KEY"
+```
+
+Each message in the thread becomes an episodic memory; tool calls and
+their outputs are stored together with `metadata.message_role=tool`.
+
+## From a hand-rolled vector DB
+
+If you have your own ingest pipeline writing to pgvector, Pinecone,
+Weaviate, etc., the cleanest path is a one-shot dump and re-ingest:
+
+```python
+from ledgermem import LedgerMem
+
+lm = LedgerMem()  # picks up env vars
+
+with open("dump.jsonl") as f:
+    for line in f:
+        row = json.loads(line)
+        lm.memories.create(
+            content=row["text"],
+            metadata={**row.get("metadata", {}), "imported_from": "vector-db-x"},
+            id=row["id"],  # preserve your IDs
+        )
+```
+
+The `id` parameter lets you keep your existing IDs so any external
+references remain stable. Embeddings are recomputed by LedgerMem — we do
+not import vectors directly to avoid mixing models in one index.
+
+## Verification
+
+After any migration, do two things:
+
+1. **Spot-check.** Pick 10 random source IDs and confirm they exist in
+   LedgerMem with the right content and metadata.
+2. **Run a representative query** against both systems and compare the
+   top-5 results. The order will differ (different rankers), but the
+   top-5 should overlap substantially.
+
+If the second check fails, the most likely culprit is a content
+transformation in the importer — open an issue with a sample and we will
+fix it.
+
+## Dual-running
+
+For zero-downtime migrations, dual-write to both systems for a week:
+
+```python
+def remember(content, metadata):
+    new_id = lm.memories.create(content=content, metadata=metadata).id
+    legacy_store.write(content=content, metadata={**metadata, "lm_id": new_id})
+    return new_id
+```
+
+Then cut reads over to LedgerMem when you are confident, and stop
+writing to the legacy store. Use the `imported_from` metadata key to
+mark migrated rows so you can later prune them if you regret a
+mapping decision.
