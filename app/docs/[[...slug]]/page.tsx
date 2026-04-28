@@ -8,6 +8,12 @@ type PageProps = {
   params: Promise<{ slug?: string[] }>;
 };
 
+// Docs are 100% MDX-driven via fumadocs. We enumerate every page in
+// generateStaticParams below, so any slug not in that list is genuinely
+// missing — render a 404 instead of bouncing through SSR (which gives an
+// attacker a free way to probe for unpublished URLs and adds latency).
+export const dynamicParams = false;
+
 export default async function Page({ params }: PageProps) {
   const { slug } = await params;
   const page = source.getPage(slug);
