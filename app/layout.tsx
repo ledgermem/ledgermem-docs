@@ -3,8 +3,14 @@ import type { ReactNode } from "react";
 import { RootProvider } from "fumadocs-ui/provider";
 import "fumadocs-ui/style.css";
 
+// `??` only falls back on null/undefined, so an empty `NEXT_PUBLIC_SITE_URL`
+// (which Vercel emits if a project-level env var is set but blank) used to
+// reach `new URL("")` and crash the build. Treat blank/whitespace as missing.
+const RAW_SITE_URL = process.env.NEXT_PUBLIC_SITE_URL?.trim();
 const SITE_URL =
-  process.env.NEXT_PUBLIC_SITE_URL ?? "https://docs.proofly.dev";
+  RAW_SITE_URL && RAW_SITE_URL.length > 0
+    ? RAW_SITE_URL
+    : "https://docs.proofly.dev";
 
 // Without metadataBase, every absolute URL Next.js emits in OG/Twitter tags
 // falls back to localhost in production builds, which breaks social previews
