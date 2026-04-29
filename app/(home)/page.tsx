@@ -5,7 +5,7 @@ export default function HomePage() {
     <main className="mx-auto flex max-w-4xl flex-1 flex-col gap-8 px-6 py-16">
       <section>
         <h1 className="text-5xl font-bold tracking-tight">
-          LedgerMem documentation
+          Mnemo documentation
         </h1>
         <p className="mt-4 text-lg text-fd-muted-foreground">
           Long-term memory for LLM agents — managed, multi-tenant, fast. Start

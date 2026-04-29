@@ -1,24 +1,24 @@
 openapi: 3.1.0
 info:
-  title: LedgerMem API
+  title: Mnemo API
   version: "0.1.0"
   description: |
-    LedgerMem is a managed long-term memory layer for LLM agents. Every
+    Mnemo is a managed long-term memory layer for LLM agents. Every
     request must carry an `Authorization: Bearer <api_key>` header and an
     `x-workspace-id: <workspace_id>` header.
   contact:
-    name: LedgerMem
-    email: founders@proofly.dev
-    url: https://docs.proofly.dev
+    name: Mnemo
+    email: founders@getmnemo.xyz
+    url: https://docs.getmnemo.xyz
   license:
     name: Apache-2.0
     url: https://www.apache.org/licenses/LICENSE-2.0
 servers:
-  - url: https://api.proofly.dev
+  - url: https://api.getmnemo.xyz
     description: Production
-  - url: https://api-eu.proofly.dev
+  - url: https://api-eu.getmnemo.xyz
     description: EU region
-  - url: https://api-ap.proofly.dev
+  - url: https://api-ap.getmnemo.xyz
     description: Asia-Pacific region
 
 security:

@@ -6,8 +6,8 @@ export default function Layout({ children }: { children: ReactNode }) {
   return (
     <DocsLayout
       tree={source.pageTree}
-      nav={{ title: "LedgerMem" }}
-      githubUrl="https://github.com/ledgermem/ledgermem-docs"
+      nav={{ title: "Mnemo" }}
+      githubUrl="https://github.com/getmnemo/getmnemo-docs"
     >
       {children}
     </DocsLayout>

@@ -10,14 +10,14 @@ const RAW_SITE_URL = process.env.NEXT_PUBLIC_SITE_URL?.trim();
 const SITE_URL =
   RAW_SITE_URL && RAW_SITE_URL.length > 0
     ? RAW_SITE_URL
-    : "https://docs.proofly.dev";
+    : "https://docs.getmnemo.xyz";
 
 // Without metadataBase, every absolute URL Next.js emits in OG/Twitter tags
 // falls back to localhost in production builds, which breaks social previews
 // and lighthouse audits. Pin it here so per-page metadata can stay relative.
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
-  title: { default: "LedgerMem", template: "%s — LedgerMem" },
+  title: { default: "Mnemo", template: "%s — Mnemo" },
   description: "Long-term memory for LLM agents.",
 };
 
