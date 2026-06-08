@@ -10,7 +10,7 @@ const RAW_SITE_URL = process.env.NEXT_PUBLIC_SITE_URL?.trim();
 const SITE_URL =
   RAW_SITE_URL && RAW_SITE_URL.length > 0
     ? RAW_SITE_URL
-    : "https://docs.getmnemo.xyz";
+    : "https://docs.mnemohq.com";
 
 // Without metadataBase, every absolute URL Next.js emits in OG/Twitter tags
 // falls back to localhost in production builds, which breaks social previews

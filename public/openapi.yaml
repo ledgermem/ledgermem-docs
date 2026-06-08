@@ -8,17 +8,17 @@ info:
     `x-workspace-id: <workspace_id>` header.
   contact:
     name: Mnemo
-    email: founders@getmnemo.xyz
-    url: https://docs.getmnemo.xyz
+    email: founders@mnemohq.com
+    url: https://docs.mnemohq.com
   license:
     name: Apache-2.0
     url: https://www.apache.org/licenses/LICENSE-2.0
 servers:
-  - url: https://api.getmnemo.xyz
+  - url: https://api.mnemohq.com
     description: Production
-  - url: https://api-eu.getmnemo.xyz
+  - url: https://api-eu.mnemohq.com
     description: EU region
-  - url: https://api-ap.getmnemo.xyz
+  - url: https://api-ap.mnemohq.com
     description: Asia-Pacific region
 
 security:
