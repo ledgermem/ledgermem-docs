@@ -1,0 +1,115 @@
+---
+title: YouTube ingestion
+description: Store a timestamped transcript and selected visual evidence from a public YouTube video.
+---
+
+YouTube ingestion turns one public video into searchable Mnemo memory. Choose
+whether Mnemo should capture only what was said or also preserve important
+information that was shown.
+
+## Modes
+
+| Mode | Stored material | Monthly plan meter |
+| --- | --- | --- |
+| `transcript` | Timestamped spoken transcript | Transcript video minutes |
+| `transcript_and_visuals` | Transcript plus selected diagrams, interface changes, actions, objects, and on-screen text | Video + visuals minutes |
+
+Visual mode does not inspect and store every frame. It identifies a bounded set
+of scenes where the image adds information that is absent from the transcript.
+Each observation includes a timestamp, type, description, confidence score,
+entities, and a YouTube evidence link.
+
+Mnemo does not download or retain the video or its frames.
+
+## Plan limits
+
+| Plan | Transcript | Transcript + visuals |
+| --- | ---: | ---: |
+| Free | 30 min / month | 10 min / month |
+| Pro | 300 min / month | 120 min / month |
+| Team | 2,000 min / month | 1,000 min / month |
+| Enterprise | Custom | Custom |
+
+The selected mode uses one meter. A visual ingestion does not also consume the
+transcript meter. Mnemo reserves the video's duration before processing starts
+and releases it if the job reaches a final failure.
+
+## Check a video
+
+Use the estimate endpoint before queueing. It validates the URL, returns the
+duration, and shows whether the video fits the remaining plan quota.
+
+```bash
+curl -X POST https://api.mnemohq.com/v1/media/youtube/estimate \
+  -H "Authorization: Bearer $MNEMO_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "url": "https://www.youtube.com/watch?v=VIDEO_ID",
+    "mode": "transcript_and_visuals"
+  }'
+```
+
+```json
+{
+  "videoId": "VIDEO_ID",
+  "canonicalUrl": "https://www.youtube.com/watch?v=VIDEO_ID",
+  "title": "Product walkthrough",
+  "durationSeconds": 524,
+  "durationMinutes": 9,
+  "mode": "transcript_and_visuals",
+  "meter": "youtube_visual_seconds",
+  "quota": {
+    "used": 0,
+    "limit": 600,
+    "remaining": 600,
+    "requested": 524,
+    "willFit": true
+  }
+}
+```
+
+## Queue ingestion
+
+```bash
+curl -X POST https://api.mnemohq.com/v1/media/youtube \
+  -H "Authorization: Bearer $MNEMO_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "url": "https://www.youtube.com/watch?v=VIDEO_ID",
+    "mode": "transcript_and_visuals",
+    "scope": { "type": "project", "id": "onboarding" }
+  }'
+```
+
+The response includes an ingestion `id`, source document ID, and `jobId`. Poll
+`GET /v1/jobs/{jobId}` or use `mnemo.jobs.wait(jobId)` until the job is
+`completed` or `failed`.
+
+Submitting the same video, mode, and scope again returns the existing ingestion
+instead of creating a duplicate.
+
+## Search the result
+
+Search the same scope used for ingestion:
+
+```ts
+const { results } = await mnemo.search({
+  scope: { type: 'project', id: 'onboarding' },
+  q: 'What changed on the deployment screen?',
+  includeSources: true,
+})
+```
+
+Visual observations use the `visual_observation` memory type. Their metadata
+contains the scene timestamp, end time, visual kind, entities, extracted
+on-screen text when present, confidence, and the source evidence URL.
+
+## Limits
+
+- The URL must point to a public YouTube video. Private and unlisted videos are
+  rejected.
+- A video can be up to three hours long.
+- Fast motion or very brief visual changes may be missed by sampled video
+  analysis.
+- Confidence is model evidence, not a guarantee. Follow the timestamp link
+  when an exact visual claim matters.
