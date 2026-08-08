@@ -1,319 +1,971 @@
-openapi: 3.1.0
-info:
-  title: Mnemo API
-  version: "0.1.0"
-  description: |
-    Mnemo is a managed long-term memory layer for LLM agents. Every
-    request must carry an `Authorization: Bearer <api_key>` header and an
-    `x-workspace-id: <workspace_id>` header.
-  contact:
-    name: Mnemo
-    email: founders@getmnemo.xyz
-    url: https://docs.getmnemo.xyz
-  license:
-    name: Apache-2.0
-    url: https://www.apache.org/licenses/LICENSE-2.0
-servers:
-  - url: https://api.getmnemo.xyz
-    description: Production
-  - url: https://api-eu.getmnemo.xyz
-    description: EU region
-  - url: https://api-ap.getmnemo.xyz
-    description: Asia-Pacific region
-
-security:
-  - bearerAuth: []
-    workspaceHeader: []
-
+openapi: 3.0.0
 paths:
-  /v1/search:
-    post:
-      summary: Search a workspace for memories
-      operationId: search
-      tags: [search]
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/SearchRequest"
-      responses:
-        "200":
-          description: Search results
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/SearchResponse"
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "429": { $ref: "#/components/responses/RateLimited" }
-
   /v1/memories:
     post:
-      summary: Create a memory
-      operationId: createMemory
-      tags: [memories]
+      operationId: MemoriesController_create
+      parameters: []
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/CreateMemoryRequest"
+              $ref: "#/components/schemas/CreateMemoriesDto"
       responses:
         "201":
-          description: Memory created
+          description: >-
+            Memories are committed and searchable. The receipt reports every input outcome without exposing ingestion
+            internals.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Memory"
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "422": { $ref: "#/components/responses/ValidationFailed" }
+                $ref: "#/components/schemas/CreateMemoriesResponseDto"
+      security: &ref_0
+        - bearer: []
+      summary: Create explicit memories in the synchronous memory lane.
+      tags: &ref_1
+        - Memories
     get:
-      summary: List memories with optional filters
-      operationId: listMemories
-      tags: [memories]
+      operationId: MemoriesController_list
       parameters:
         - name: limit
+          required: false
           in: query
-          schema: { type: integer, default: 50, maximum: 200 }
+          schema:
+            minimum: 1
+            maximum: 100
+            example: 25
+            type: number
         - name: cursor
+          required: false
           in: query
-          schema: { type: string }
-        - name: filter
+          schema:
+            example: >-
+              eyJjcmVhdGVkQXQiOiIyMDI2LTAzLTMwVDE0OjAwOjAwLjAwMFoiLCJpZCI6IjAwMDAwMDAwLTAwMDAtMDAwMC0wMDAwLTAwMDAwMDAwMDAwMSJ9
+            type: string
+        - name: scopeType
+          required: false
           in: query
-          description: JSON-encoded metadata filter
-          schema: { type: string }
+          schema:
+            example: user
+            type: string
+        - name: scopeId
+          required: false
+          in: query
+          schema:
+            example: alice
+            type: string
+        - name: containerTag
+          required: false
+          in: query
+          description: Deprecated shorthand alias for scope filtering.
+          deprecated: true
+          schema:
+            example: user:alice
+            type: string
       responses:
         "200":
-          description: Memory page
+          description: ""
+      security: *ref_0
+      summary: List stored memories within a required scope or legacy containerTag.
+      tags: *ref_1
+  /v1/memories/{memoryId}:
+    get:
+      operationId: MemoriesController_getById
+      parameters:
+        - name: memoryId
+          required: true
+          in: path
+          schema:
+            type: string
+      responses:
+        "200":
+          description: ""
+      security: *ref_0
+      summary: Fetch a single memory by ID.
+      tags: *ref_1
+    patch:
+      operationId: MemoriesController_update
+      parameters:
+        - name: memoryId
+          required: true
+          in: path
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateMemoryDto"
+      responses:
+        "200":
+          description: ""
+      security: *ref_0
+      summary: Update a stored memory and refresh its embedding.
+      tags: *ref_1
+    delete:
+      operationId: MemoriesController_remove
+      parameters:
+        - name: memoryId
+          required: true
+          in: path
+          schema:
+            type: string
+        - name: permanent
+          required: true
+          in: query
+          schema:
+            type: boolean
+      responses:
+        "200":
+          description: ""
+      security: *ref_0
+      summary: Soft delete a memory and remove it from retrieval.
+      tags: *ref_1
+  /v1/memories/{memoryId}/protection:
+    patch:
+      operationId: MemoriesController_updateProtection
+      parameters:
+        - name: memoryId
+          required: true
+          in: path
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateMemoryProtectionDto"
+      responses:
+        "200":
+          description: ""
+      security: *ref_0
+      summary: Protect or unprotect a memory using a privileged credential.
+      tags: *ref_1
+  /v1/memories/{memoryId}/restore:
+    post:
+      operationId: MemoriesController_restore
+      parameters:
+        - name: memoryId
+          required: true
+          in: path
+          schema:
+            type: string
+      responses:
+        "201":
+          description: ""
+      security: *ref_0
+      summary: Restore a memory during its recoverable deletion window.
+      tags: *ref_1
+  /v1/documents:
+    post:
+      operationId: DocumentsController_create
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateDocumentDto"
+      responses:
+        "201":
+          description: ""
+      security: &ref_2
+        - bearer: []
+      summary: Create or update a raw source document in the async ingestion lane.
+      tags: &ref_3
+        - Documents
+    get:
+      operationId: DocumentsController_list
+      parameters:
+        - name: limit
+          required: false
+          in: query
+          schema:
+            minimum: 1
+            maximum: 100
+            example: 25
+            type: number
+        - name: cursor
+          required: false
+          in: query
+          schema:
+            example: >-
+              eyJjcmVhdGVkQXQiOiIyMDI2LTAzLTMwVDE0OjAwOjAwLjAwMFoiLCJpZCI6IjAwMDAwMDAwLTAwMDAtMDAwMC0wMDAwLTAwMDAwMDAwMDAwMSJ9
+            type: string
+        - name: scopeType
+          required: false
+          in: query
+          schema:
+            example: user
+            type: string
+        - name: scopeId
+          required: false
+          in: query
+          schema:
+            example: alice
+            type: string
+        - name: containerTag
+          required: false
+          in: query
+          description: Deprecated shorthand alias for scope filtering.
+          deprecated: true
+          schema:
+            example: user:alice
+            type: string
+        - name: status
+          required: false
+          in: query
+          schema:
+            type: string
+            enum:
+              - queued
+              - processing
+              - completed
+              - failed
+      responses:
+        "200":
+          description: ""
+      security: *ref_2
+      summary: List stored documents within a required scope or legacy containerTag.
+      tags: *ref_3
+  /v1/documents/batch:
+    post:
+      operationId: DocumentsController_createBatch
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateDocumentsBatchDto"
+      responses:
+        "201":
+          description: ""
+      security: *ref_2
+      summary: Create or update up to 50 documents while isolating per-document ingestion failures.
+      tags: *ref_3
+  /v1/documents/{documentId}:
+    get:
+      operationId: DocumentsController_getById
+      parameters:
+        - name: documentId
+          required: true
+          in: path
+          schema:
+            type: string
+      responses:
+        "200":
+          description: ""
+      security: *ref_2
+      summary: Fetch a single document by ID.
+      tags: *ref_3
+    patch:
+      operationId: DocumentsController_update
+      parameters:
+        - name: documentId
+          required: true
+          in: path
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateDocumentDto"
+      responses:
+        "200":
+          description: ""
+      security: *ref_2
+      summary: Update a document and optionally requeue processing.
+      tags: *ref_3
+    delete:
+      operationId: DocumentsController_remove
+      parameters:
+        - name: documentId
+          required: true
+          in: path
+          schema:
+            type: string
+      responses:
+        "200":
+          description: ""
+      security: *ref_2
+      summary: Delete a document and hide its derived memories.
+      tags: *ref_3
+  /v1/jobs:
+    get:
+      operationId: JobsController_listByIds
+      parameters:
+        - name: ids
+          required: true
+          in: query
+          description: Comma-separated list of job UUIDs. Max 50.
+          schema: {}
+      responses:
+        "200":
+          description: ""
+      security: &ref_4
+        - bearer: []
+      summary: Batch lookup of multiple ingestion jobs in one round trip.
+      tags: &ref_5
+        - Jobs
+  /v1/jobs/{jobId}:
+    get:
+      operationId: JobsController_getJob
+      parameters:
+        - name: jobId
+          required: true
+          in: path
+          schema:
+            type: string
+        - name: if-none-match
+          required: true
+          in: header
+          schema:
+            type: string
+        - name: wait
+          required: false
+          in: query
+          description: >-
+            Long-poll up to N seconds (max 30) for the job to reach a terminal state (completed | failed) or for its
+            updatedAt to advance past the value implied by If-None-Match.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: ""
+      security: *ref_4
+      summary: >-
+        Get the status of an async document ingestion job. Supports ETag, If-None-Match, and optional ?wait=
+        long-polling.
+      tags: *ref_5
+  /v1/search:
+    post:
+      operationId: SearchController_search
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SearchRequestDto"
+      responses:
+        "201":
+          description: ""
+      security:
+        - bearer: []
+      summary: Search across memories and documents with hybrid retrieval.
+      tags:
+        - Search
+  /v1/profile:
+    post:
+      operationId: ProfileController_getProfile
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProfileRequestDto"
+      responses:
+        "201":
+          description: ""
+      security:
+        - bearer: []
+      summary: Return a prompt-ready memory profile for a single scope.
+      tags:
+        - Profile
+  /v1/public/newsletter/subscriptions:
+    post:
+      operationId: NewsletterController_subscribe
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SubscribeNewsletterDto"
+      responses:
+        "202":
+          description: ""
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/MemoryPage"
-
-  /v1/memories/{id}:
-    parameters:
-      - name: id
-        in: path
-        required: true
-        schema: { type: string }
+                type: object
+                properties:
+                  accepted:
+                    type: boolean
+                    example: true
+      summary: Request a newsletter subscription confirmation.
+      tags: &ref_6
+        - Newsletter
+  /v1/public/newsletter/confirm:
     get:
-      summary: Fetch one memory
-      operationId: getMemory
-      tags: [memories]
+      operationId: NewsletterController_confirm
+      parameters: []
       responses:
         "200":
-          description: The memory
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/Memory" }
-        "404": { $ref: "#/components/responses/NotFound" }
-    patch:
-      summary: Update a memory
-      operationId: updateMemory
-      tags: [memories]
+          description: ""
+      tags: *ref_6
+  /v1/media/youtube/estimate:
+    post:
+      operationId: YouTubeController_estimate
+      parameters: []
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/UpdateMemoryRequest"
+              $ref: "#/components/schemas/EstimateYouTubeDto"
       responses:
-        "200":
-          description: Updated memory
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/Memory" }
-    delete:
-      summary: Delete (soft or hard)
-      operationId: deleteMemory
-      tags: [memories]
+        "201":
+          description: ""
+      security: &ref_7
+        - bearer: []
+      summary: Validate a public YouTube URL and check video quota.
+      tags: &ref_8
+        - YouTube
+  /v1/media/youtube:
+    post:
+      operationId: YouTubeController_create
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateYouTubeIngestionDto"
+      responses:
+        "201":
+          description: ""
+      security: *ref_7
+      summary: Queue transcript or transcript-and-visual ingestion.
+      tags: *ref_8
+  /v1/media/youtube/{id}:
+    get:
+      operationId: YouTubeController_get
       parameters:
-        - name: hard
-          in: query
-          schema: { type: boolean, default: false }
-      responses:
-        "204":
-          description: Deleted
-
-  /v1/workspaces/{id}:
-    parameters:
-      - name: id
-        in: path
-        required: true
-        schema: { type: string }
-    get:
-      summary: Get workspace settings
-      operationId: getWorkspace
-      tags: [workspaces]
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: string
       responses:
         "200":
-          description: The workspace
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/Workspace" }
-    patch:
-      summary: Update workspace settings
-      operationId: updateWorkspace
-      tags: [workspaces]
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/UpdateWorkspaceRequest"
-      responses:
-        "200":
-          description: Updated workspace
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/Workspace" }
-
+          description: ""
+      security: *ref_7
+      tags: *ref_8
+info:
+  title: Mnemo API
+  description: Long-term memory infrastructure for AI agents. Public endpoints require API key auth and a workspace identifier.
+  version: 0.2.0
+  contact:
+    name: Mnemo
+    url: https://mnemohq.com
+    email: founders@mnemohq.com
+  license:
+    name: Proprietary
+    url: https://mnemohq.com/terms
+tags: []
+servers:
+  - url: https://api.mnemohq.com
+    description: Production
+  - url: http://localhost:4100
+    description: Local development
 components:
   securitySchemes:
-    bearerAuth:
-      type: http
+    bearer:
       scheme: bearer
-      bearerFormat: opaque
-    workspaceHeader:
+      bearerFormat: Mnemo API key
+      type: http
+    workspace:
       type: apiKey
       in: header
       name: x-workspace-id
-
-  responses:
-    Unauthorized:
-      description: Missing or invalid auth headers
-      content:
-        application/json:
-          schema: { $ref: "#/components/schemas/Error" }
-    NotFound:
-      description: Resource not found
-      content:
-        application/json:
-          schema: { $ref: "#/components/schemas/Error" }
-    ValidationFailed:
-      description: Request body failed validation
-      content:
-        application/json:
-          schema: { $ref: "#/components/schemas/Error" }
-    RateLimited:
-      description: Per-workspace QPS limit reached
-      content:
-        application/json:
-          schema: { $ref: "#/components/schemas/Error" }
-
   schemas:
-    Error:
-      type: object
-      required: [error]
-      properties:
-        error:
-          type: object
-          required: [code, message, request_id]
-          properties:
-            code: { type: string, example: memory_not_found }
-            message: { type: string }
-            request_id: { type: string, example: req_01H... }
-
-    Memory:
-      type: object
-      required: [id, content, kind, created_at, updated_at]
-      properties:
-        id: { type: string, example: mem_01H8X3... }
-        content: { type: string }
-        metadata: { type: object, additionalProperties: true }
-        kind: { type: string, enum: [semantic, episodic, hub] }
-        embedding_model: { type: string, example: text-embedding-3-large }
-        created_at: { type: string, format: date-time }
-        updated_at: { type: string, format: date-time }
-        archived_at: { type: string, format: date-time, nullable: true }
-
-    CreateMemoryRequest:
-      type: object
-      required: [content]
-      properties:
-        content: { type: string, minLength: 1 }
-        metadata: { type: object, additionalProperties: true }
-        kind: { type: string, enum: [semantic, episodic, hub] }
-
-    UpdateMemoryRequest:
+    CreateMemoryScopeDto:
       type: object
       properties:
-        content: { type: string, minLength: 1 }
-        metadata: { type: object, additionalProperties: true }
-
-    MemoryPage:
-      type: object
-      required: [data]
-      properties:
-        data:
-          type: array
-          items: { $ref: "#/components/schemas/Memory" }
-        next_cursor: { type: string, nullable: true }
-
-    SearchRequest:
-      type: object
-      required: [query]
-      properties:
-        query: { type: string, minLength: 1 }
-        limit: { type: integer, default: 5, maximum: 100 }
-        strategy:
+        type:
           type: string
-          enum: [vector, bm25, hybrid, rerank, hub-spoke, recency-boosted, time-window]
-          default: hybrid
-        filter: { type: object, additionalProperties: true }
-        rerank: { type: boolean, default: true }
-        expand: { type: boolean, default: false }
-        kind: { type: string, enum: [semantic, episodic, hub] }
-
-    SearchHit:
-      type: object
-      required: [id, content, score]
-      properties:
-        id: { type: string }
-        content: { type: string }
-        score: { type: number, format: float }
-        metadata: { type: object, additionalProperties: true }
-
-    SearchResponse:
-      type: object
-      required: [results]
-      properties:
-        results:
+          example: user
+        id:
+          type: string
+          example: alice
+        tags:
+          example:
+            - org:acme
+            - project:alpha
           type: array
-          items: { $ref: "#/components/schemas/SearchHit" }
-        latency_ms:
+          items:
+            type: string
+      required:
+        - type
+        - id
+    MemoryItemDto:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Optional client-supplied memory identifier.
+        content:
+          type: string
+          example: Alice prefers weekly Monday updates.
+        idempotencyKey:
+          type: string
+          example: cli-2026-04-29-batch-7-item-3
+          description: >-
+            Per-item idempotency key. If provided and a memory already exists with this key in the same scope, the
+            existing memory is returned and no new write occurs.
+        memoryType:
+          type: string
+          example: preference
+        mutationPolicy:
+          type: string
+          enum:
+            - standard
+            - privileged
+          default: standard
+          description: Mutation authorization policy. privileged requires a protected-memory management scope.
+        metadata:
           type: object
-          properties:
-            retrieve: { type: integer }
-            rerank: { type: integer }
-            total: { type: integer }
-
-    Workspace:
-      type: object
-      required: [id, name, region]
-      properties:
-        id: { type: string }
-        name: { type: string }
-        region: { type: string, enum: [us-east-1, eu-west-1, ap-southeast-1] }
-        embedding_model: { type: string }
-        max_chunk_tokens: { type: integer }
-        chunk_overlap_tokens: { type: integer }
-        retention_days: { type: integer, nullable: true }
-        default_search_strategy: { type: string }
-
-    UpdateWorkspaceRequest:
+          additionalProperties: true
+        source:
+          type: object
+          additionalProperties: true
+      required:
+        - content
+    CreateMemoriesDto:
       type: object
       properties:
-        embedding_model: { type: string }
-        max_chunk_tokens: { type: integer }
-        chunk_overlap_tokens: { type: integer }
-        retention_days: { type: integer, nullable: true }
-        default_search_strategy: { type: string }
-
-tags:
-  - name: search
-    description: Read memories
-  - name: memories
-    description: Write and manage memories
-  - name: workspaces
-    description: Configure workspace-level settings
+        scope:
+          description: Primary scope object. Preferred over containerTag for public API usage.
+          allOf:
+            - $ref: "#/components/schemas/CreateMemoryScopeDto"
+        containerTag:
+          type: string
+          example: user:alice
+          description: Deprecated shorthand alias for scope.
+          deprecated: true
+        containerType:
+          type: string
+          example: user
+        metadata:
+          type: object
+          additionalProperties: true
+        source:
+          type: object
+          additionalProperties: true
+        enrichmentMode:
+          type: string
+          enum:
+            - sync
+            - deferred
+            - skip
+          default: deferred
+          description: >-
+            Controls derived LLM enrichment. Use skip for governed verbatim writes; retrieval embeddings are still
+            created.
+        items:
+          maxItems: 100
+          type: array
+          items:
+            $ref: "#/components/schemas/MemoryItemDto"
+      required:
+        - items
+    MemoryWriteStatsDto:
+      type: object
+      properties:
+        total:
+          type: number
+        created:
+          type: number
+        deduplicated:
+          type: number
+      required:
+        - total
+        - created
+        - deduplicated
+    MemoryWriteReceiptItemDto:
+      type: object
+      properties:
+        inputIndex:
+          type: number
+          minimum: 0
+          description: Zero-based position of the corresponding input item.
+        memoryId:
+          type: string
+          format: uuid
+          description: Committed memory identifier.
+        status:
+          type: string
+          enum:
+            - created
+            - deduplicated
+          description: Whether this request created the memory or reused an existing equivalent.
+      required:
+        - inputIndex
+        - memoryId
+        - status
+    MemoryWriteReceiptDto:
+      type: object
+      properties:
+        writeId:
+          type: string
+          format: uuid
+          description: Opaque identifier for this completed write operation.
+        status:
+          type: string
+          enum:
+            - searchable
+          description: Confirms that every returned memory is committed and available to search.
+        searchableAt:
+          type: string
+          format: date-time
+          description: Time at which the complete write became searchable.
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/MemoryWriteReceiptItemDto"
+      required:
+        - writeId
+        - status
+        - searchableAt
+        - items
+    CreateMemoriesResponseDto:
+      type: object
+      properties:
+        scopeKey:
+          type: string
+          example: user:alice
+        scope:
+          $ref: "#/components/schemas/CreateMemoryScopeDto"
+        items:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+          description: Stored memory records in the same order as the submitted items.
+        stats:
+          $ref: "#/components/schemas/MemoryWriteStatsDto"
+        receipt:
+          $ref: "#/components/schemas/MemoryWriteReceiptDto"
+      required:
+        - scopeKey
+        - scope
+        - items
+        - stats
+        - receipt
+    UpdateMemoryDto:
+      type: object
+      properties:
+        content:
+          type: string
+        memoryType:
+          type: string
+        metadata:
+          type: object
+          additionalProperties: true
+          nullable: true
+        source:
+          type: object
+          additionalProperties: true
+          nullable: true
+    UpdateMemoryProtectionDto:
+      type: object
+      properties:
+        mutationPolicy:
+          type: string
+          enum:
+            - standard
+            - privileged
+          description: Target mutation policy. Semantic classification remains in memoryType.
+      required:
+        - mutationPolicy
+    ScopeDto:
+      type: object
+      properties:
+        type:
+          type: string
+          example: user
+        id:
+          type: string
+          example: alice
+        tags:
+          example:
+            - org:acme
+            - project:alpha
+          type: array
+          items:
+            type: string
+      required:
+        - type
+        - id
+    CreateDocumentDto:
+      type: object
+      properties:
+        scope:
+          description: Primary scope object. Preferred over containerTag for public API usage.
+          allOf:
+            - $ref: "#/components/schemas/ScopeDto"
+        containerTag:
+          type: string
+          example: user:alice
+          description: Deprecated shorthand alias for scope.
+          deprecated: true
+        containerType:
+          type: string
+          example: user
+        content:
+          type: string
+          example: Alice said she is evaluating two vendors and needs pricing by Friday.
+          description: Raw document content. Hard cap of 500 KB; for larger payloads split into multiple documents.
+        contentType:
+          type: string
+          example: conversation
+        customId:
+          type: string
+          example: thread-42
+        metadata:
+          type: object
+          additionalProperties: true
+        entityContext:
+          type: object
+          additionalProperties: true
+      required:
+        - content
+        - contentType
+    CreateDocumentsBatchDto:
+      type: object
+      properties:
+        documents:
+          maxItems: 50
+          minItems: 1
+          type: array
+          items:
+            $ref: "#/components/schemas/CreateDocumentDto"
+      required:
+        - documents
+    UpdateDocumentDto:
+      type: object
+      properties:
+        content:
+          type: string
+        contentType:
+          type: string
+        customId:
+          type: object
+        metadata:
+          type: object
+          additionalProperties: true
+          nullable: true
+        entityContext:
+          type: object
+          additionalProperties: true
+          nullable: true
+        reprocess:
+          type: boolean
+          description: Force reprocessing even if only metadata changed.
+          default: false
+    SearchRequestDto:
+      type: object
+      properties:
+        scope:
+          description: Primary scope object. Preferred over containerTag for public API usage.
+          allOf:
+            - $ref: "#/components/schemas/ScopeDto"
+        containerTag:
+          type: string
+          example: user:alice
+          description: Deprecated shorthand alias for scope.
+          deprecated: true
+        q:
+          type: string
+          example: What does Alice need this week?
+        scopes:
+          type: array
+          items:
+            $ref: "#/components/schemas/ScopeDto"
+        containerTags:
+          example:
+            - user:alice
+            - project:alpha
+          deprecated: true
+          type: array
+          items:
+            type: string
+        searchMode:
+          type: string
+          enum:
+            - hybrid
+            - memories
+            - documents
+          default: hybrid
+        limit:
+          type: number
+          minimum: 1
+          maximum: 50
+          default: 10
+        filters:
+          type: object
+          additionalProperties: true
+        includeSources:
+          type: boolean
+          default: false
+        intentOverride:
+          type: string
+          description: Override the automatic query intent classification. When set, the query router is skipped.
+          enum:
+            - temporal
+            - factual
+            - multi_hop
+            - simple_recall
+            - knowledge_update
+            - aggregation
+        agentic:
+          type: boolean
+          description: >-
+            Enable agentic retrieval loop. When true, low-confidence results trigger automatic query reformulation,
+            iterative deepening, and self-verification. Adds latency but improves recall. Implicitly upgrades `mode` to
+            `precise` for backward compatibility.
+          default: false
+        mode:
+          type: string
+          description: >-
+            Retrieval mode. `fast` (default): hot-path lookup — embed + intent router + parallel SQL + RRF +
+            embedding-based concept-graph boost (uses pre-computed concept embeddings extracted at ingest time, no LLM
+            call on the query side). Target avg ~2.5s, p95 ~5s. `precise`: full pipeline with LLM intent router,
+            semantic bridge expansion, LLM concept extraction, reranker, and optional agentic loop. Highest recall at
+            the cost of 20–50s. If `mode` is unset and `agentic` is true, mode is implicitly `precise` for backward
+            compatibility.
+          enum:
+            - fast
+            - precise
+          default: fast
+        strategies:
+          type: array
+          description: >-
+            Additive opt-in retrieval strategies, applied on top of the always-on baseline (vector + keyword + fact +
+            RRF). Force-enables specific strategies for this query — never disables the baseline. Omit to let the intent
+            router decide. The response echoes which strategies actually fired in `strategiesRan`.
+          example:
+            - temporal
+            - graph
+          items:
+            type: string
+            enum:
+              - temporal
+              - graph
+              - rerank
+              - agentic
+        excludeIds:
+          description: >-
+            Memory/document/fact IDs to exclude from results — dedup-aware retrieval. Pass the IDs already in your
+            agent's context (e.g. from a prior /v1/profile or /v1/search call) and they are filtered out, so you never
+            re-retrieve what the agent already holds. Excluded BEFORE ranking, so `limit` is still honored from the
+            remaining results.
+          example:
+            - mem_a1b2
+            - mem_c3d4
+          type: array
+          items:
+            type: string
+      required:
+        - q
+    ProfileRequestDto:
+      type: object
+      properties:
+        scope:
+          description: Primary scope object. Preferred over containerTag for public API usage.
+          allOf:
+            - $ref: "#/components/schemas/ScopeDto"
+        containerTag:
+          type: string
+          example: user:alice
+          description: Deprecated shorthand alias for scope.
+          deprecated: true
+        q:
+          type: string
+          example: What should I know before replying to Alice?
+          description: >-
+            Optional question. When provided AND `includeSearch=true`, the profile is augmented with `?q=` results from
+            the hybrid search pipeline. Triggering search adds 1-15 LLM calls and seconds of latency, so it is opt-in.
+        threshold:
+          type: number
+          minimum: 0
+          maximum: 1
+          default: 0
+        includeSearch:
+          type: boolean
+          description: >-
+            Run hybrid search and include results in the response. Default false because search is expensive
+            (LLM-driven). Even when true, you must still pass `q`.
+          default: false
+        staticLimit:
+          type: number
+          description: Max number of static facts to return.
+          minimum: 1
+          maximum: 50
+          default: 12
+        dynamicLimit:
+          type: number
+          description: Max number of dynamic items (memories + documents).
+          minimum: 1
+          maximum: 50
+          default: 10
+        itemMaxBytes:
+          type: number
+          description: Max bytes per dynamic item content (sliced if larger).
+          minimum: 100
+          maximum: 8000
+          default: 600
+    SubscribeNewsletterDto:
+      type: object
+      properties: {}
+    EstimateYouTubeDto:
+      type: object
+      properties:
+        url:
+          type: string
+          example: https://www.youtube.com/watch?v=dQw4w9WgXcQ
+        mode:
+          type: string
+          enum: &ref_9
+            - transcript
+            - transcript_and_visuals
+          default: transcript
+      required:
+        - url
+        - mode
+    CreateYouTubeIngestionDto:
+      type: object
+      properties:
+        scope:
+          description: Primary scope object. Preferred over containerTag for public API usage.
+          allOf:
+            - $ref: "#/components/schemas/ScopeDto"
+        containerTag:
+          type: string
+          example: user:alice
+          description: Deprecated shorthand alias for scope.
+          deprecated: true
+        url:
+          type: string
+          example: https://www.youtube.com/watch?v=dQw4w9WgXcQ
+        mode:
+          type: string
+          enum: *ref_9
+          default: transcript
+        customId:
+          type: string
+          example: onboarding-demo
+        metadata:
+          type: object
+          additionalProperties: true
+      required:
+        - url
+        - mode

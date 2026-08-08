@@ -1,4 +1,5 @@
 import Link from "next/link";
+import type { Route } from "next";
 
 export default function HomePage() {
   return (
@@ -20,7 +21,7 @@ export default function HomePage() {
             Get started
           </Link>
           <Link
-            href="/docs"
+            href={"/docs" as Route}
             className="rounded-md border border-fd-border px-5 py-2.5 text-sm font-semibold"
           >
             Browse docs

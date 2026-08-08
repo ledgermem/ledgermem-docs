@@ -1,139 +1,117 @@
 ---
 title: TypeScript SDK
-description: Official LedgerMem client for Node, Bun, Deno, and the browser.
+description: Use Mnemo from Node.js, Bun, Deno, browsers, and edge runtimes.
 ---
 
-The TypeScript SDK is the most commonly used client for LedgerMem and the
-reference implementation for every other SDK.
-
-- npm: [`ledgermem`](https://www.npmjs.com/package/ledgermem)
-- GitHub: [`ledgermem/ledgermem-js`](https://github.com/ledgermem/ledgermem-js)
-- Runtimes: Node 18+, Bun 1+, Deno 1.40+, modern browsers (with caveats — see below).
+The [`getmnemo`](https://www.npmjs.com/package/getmnemo) package is Mnemo's
+official TypeScript and JavaScript SDK. It supports ESM and CommonJS, requires
+Node.js 18 or later, and has no runtime dependencies.
 
 ## Install
 
 ```bash
-npm install ledgermem
-# or
-pnpm add ledgermem
-# or
-bun add ledgermem
+npm install getmnemo
 ```
 
-## Configure
+## Create a client
 
 ```ts
-import { LedgerMem } from "ledgermem";
+import { Mnemo } from 'getmnemo'
 
-const lm = new LedgerMem({
-  apiKey: process.env.LEDGERMEM_API_KEY!,
-  workspaceId: process.env.LEDGERMEM_WORKSPACE_ID!,
-  // Optional:
-  baseUrl: "https://api.proofly.dev",
-  timeoutMs: 30_000,
-  retries: { max: 2, backoff: "exponential" },
-  fetch: globalThis.fetch,
-});
+const mnemo = new Mnemo({
+  apiKey: process.env.MNEMO_API_KEY!,
+  defaultContainerTag: 'user:jane',
+})
 ```
 
-The constructor accepts a custom `fetch` so you can run inside Cloudflare
-Workers or Vercel Edge runtimes, where the global `fetch` shape differs
-slightly.
+The API key determines the workspace. Keep full-access keys on your server.
 
-## Memories
+## Add and search
 
 ```ts
-// Create
-const memory = await lm.memories.create({
-  content: "User prefers dark mode.",
-  metadata: { user_id: "u_123" },
-  kind: "semantic",
-});
+await mnemo.add({
+  content: 'Jane prefers Japanese short-grain rice.',
+  memoryType: 'preference',
+})
 
-// Read
-const fetched = await lm.memories.get(memory.id);
+const { results } = await mnemo.search({
+  q: 'What rice does Jane prefer?',
+  includeSources: true,
+})
+```
 
-// Update
-await lm.memories.update(memory.id, {
-  metadata: { user_id: "u_123", updated_by: "agent" },
-});
+Use a structured scope when it is clearer than a container tag:
 
-// Delete (soft by default)
-await lm.memories.delete(memory.id);
+```ts
+await mnemo.add({
+  scope: { type: 'customer', id: 'acme' },
+  content: 'Acme renewed through December.',
+})
+```
 
-// Hard delete
-await lm.memories.delete(memory.id, { hard: true });
+Every save, search, document, and video request stays inside the supplied
+container.
 
-// List with cursor pagination
-for await (const page of lm.memories.list({ filter: { user_id: "u_123" } })) {
-  for (const m of page.data) {
-    console.log(m.id, m.content);
-  }
+## Ingest documents
+
+```ts
+const accepted = await mnemo.documents.create({
+  scope: { type: 'customer', id: 'acme' },
+  content: meetingTranscript,
+  contentType: 'conversation',
+  customId: 'meeting-2026-08-08',
+})
+
+const job = await mnemo.jobs.wait(accepted.jobId)
+```
+
+`documents.createBatch()` accepts up to 50 documents and reports each failed
+item separately.
+
+## Ingest YouTube videos
+
+```ts
+const estimate = await mnemo.youtube.estimate({
+  url: 'https://www.youtube.com/watch?v=VIDEO_ID',
+  mode: 'transcript_and_visuals',
+})
+
+if (estimate.quota.willFit) {
+  const video = await mnemo.youtube.create({
+    scope: { type: 'course', id: 'onboarding' },
+    url: estimate.canonicalUrl,
+    mode: 'transcript_and_visuals',
+  })
+
+  await mnemo.jobs.wait(video.jobId)
 }
 ```
 
-## Search
+See [YouTube ingestion](/docs/youtube-ingestion) for modes, plan limits, and
+evidence behavior.
+
+## Errors and retries
 
 ```ts
-const results = await lm.search({
-  query: "what does the user like in their editor?",
-  limit: 5,
-  strategy: "rerank",
-  filter: { user_id: "u_123" },
-});
-
-for (const hit of results.results) {
-  console.log(hit.score, hit.content);
-}
-```
-
-## Streaming
-
-For very large result sets, use the streaming search endpoint:
-
-```ts
-for await (const hit of lm.search.stream({ query: "...", limit: 200 })) {
-  console.log(hit.id, hit.score);
-}
-```
-
-## Error handling
-
-All API errors throw `LedgerMemError`, which carries the HTTP status, the
-server-side request ID, and any structured error payload:
-
-```ts
-import { LedgerMemError } from "ledgermem";
+import { MnemoHTTPError, MnemoTimeoutError } from 'getmnemo'
 
 try {
-  await lm.memories.get("mem_does_not_exist");
-} catch (err) {
-  if (err instanceof LedgerMemError && err.status === 404) {
-    console.log("not found:", err.requestId);
-  } else {
-    throw err;
+  await mnemo.jobs.wait(jobId, { timeoutMs: 120_000 })
+} catch (error) {
+  if (error instanceof MnemoHTTPError) {
+    console.error(error.status, error.message)
+  }
+  if (error instanceof MnemoTimeoutError) {
+    console.error('The job is still running')
   }
 }
 ```
+
+The SDK retries rate limits, server errors, and transient network failures with
+bounded exponential backoff. Ambiguous memory writes are retried only when all
+items have stable idempotency keys.
 
 ## Browser usage
 
-You can use the SDK in a browser, but never with a long-lived API key
-embedded in the bundle. Instead, mint a temporary, scoped key from your
-backend and pass it to `new LedgerMem({ apiKey })`. The
-[playground](https://play.proofly.dev) does exactly this — see its
-`/api/key` route for a working example.
-
-## TypeScript types
-
-Every API shape is exported. The most useful:
-
-```ts
-import type {
-  Memory,
-  SearchHit,
-  SearchRequest,
-  SearchStrategy,
-  ListResponse,
-} from "ledgermem";
-```
+Do not embed a full-access API key in a browser bundle. Send requests through
+your server or issue a narrowly scoped key for the browser operation.
