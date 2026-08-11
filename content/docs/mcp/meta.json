@@ -1,6 +1,7 @@
 {
   "title": "MCP",
   "pages": [
+    "hosted",
     "claude-desktop",
     "cursor",
     "windsurf",
