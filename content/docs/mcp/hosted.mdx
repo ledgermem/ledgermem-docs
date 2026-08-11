@@ -1,0 +1,116 @@
+---
+title: Hosted MCP
+description: Connect any MCP-compatible client to Mnemo over the internet.
+---
+
+Mnemo has a hosted MCP server for agents that need durable memory without a
+local process or a shared API key.
+
+## Server URL
+
+```text
+https://mcp.mnemohq.com/mcp
+```
+
+Add this URL to an MCP-compatible client such as Cursor, Claude Code, Claude
+Desktop, Windsurf, VS Code, or Zed.
+
+The client discovers Mnemo's OAuth endpoints automatically. When it connects,
+the user signs in to Mnemo and approves the workspace and memory container the
+client may use.
+
+No API key is required for the hosted connection.
+
+## Cursor
+
+Open Cursor's MCP settings and add:
+
+```json
+{
+  "mcpServers": {
+    "mnemo": {
+      "url": "https://mcp.mnemohq.com/mcp"
+    }
+  }
+}
+```
+
+Save the configuration, enable Mnemo, and complete the browser sign-in when
+Cursor asks for authorization.
+
+## Claude Code
+
+```bash
+claude mcp add --transport http mnemo https://mcp.mnemohq.com/mcp
+```
+
+Then start a session and follow the authorization link.
+
+## Other clients
+
+Look for **Add remote MCP server**, **Add connector**, or **MCP settings** in
+the client. Enter:
+
+```text
+https://mcp.mnemohq.com/mcp
+```
+
+The exact menu name varies by client, but the connection is the same: the
+client opens Mnemo's sign-in page, the user grants access, and the client
+receives a short-lived access token.
+
+## Available tools
+
+After authorization, the agent can use:
+
+- Search memories
+- Add memories
+- Get memories
+- Update memories
+- Delete memories
+- List memories
+
+Every request is tied to the workspace and container selected during
+authorization. The agent cannot change that boundary by adding a different
+workspace or container to a tool call.
+
+## Hosted MCP versus the npm package
+
+Use the hosted URL when the user wants to connect an online MCP client:
+
+```text
+https://mcp.mnemohq.com/mcp
+```
+
+Use `getmnemo-mcp` when a developer wants to run Mnemo locally through the
+stdio transport:
+
+```bash
+npm install getmnemo-mcp
+```
+
+The npm package and the hosted server expose the same memory purpose, but they
+use different connection models. The hosted server uses OAuth; the local
+package uses local configuration and credentials.
+
+## Troubleshooting
+
+### The client asks for an API key
+
+Make sure the server was added as a **remote HTTP** MCP server, not as a local
+stdio command. Use the hosted URL exactly:
+
+```text
+https://mcp.mnemohq.com/mcp
+```
+
+### The user cannot see the right memories
+
+Sign out and reconnect, then select the intended Mnemo workspace and
+container. Memory access follows the authorization grant, not the project
+name shown in the MCP client.
+
+### The connection is unauthorized
+
+Complete the Mnemo browser authorization flow again. Access tokens are short
+lived; reconnecting is expected when a token expires or a grant is revoked.
